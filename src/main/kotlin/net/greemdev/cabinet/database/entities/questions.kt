@@ -1,10 +1,14 @@
 package net.greemdev.cabinet.database.entities
 
+import dev.kord.common.Color
 import dev.kord.common.entity.Snowflake
+import dev.kord.common.kColor
 import dev.kord.core.Kord
 import dev.kord.core.behavior.edit
 import dev.kord.core.behavior.getChannelOfOrNull
 import dev.kord.core.entity.channel.TextChannel
+import dev.kord.rest.builder.component.ActionRowBuilder
+import dev.kord.rest.builder.component.option
 import dev.kord.rest.builder.message.EmbedBuilder
 import dev.kord.rest.builder.message.modify.embed
 import kotlinx.serialization.Serializable
@@ -14,6 +18,7 @@ import org.jetbrains.exposed.dao.id.*
 import net.greemdev.cabinet.database.entities.json.*
 import net.greemdev.cabinet.database.x.*
 import net.greemdev.cabinet.extensions.*
+import net.greemdev.cabinet.lib.kordex.CabinetBot
 import net.greemdev.cabinet.lib.kordex.koinInject
 import net.greemdev.cabinet.lib.util.*
 
@@ -87,24 +92,40 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
         pros = pros accumulate accumulator
     }
 
+    context(ActionRowBuilder)
+    fun prosSelectMenu() = stringSelect("remove-pros:${id.value}") {
+        allowedValues = 1..pros.size.coerceAtMost(25)
+        pros.forEach {
+            option(it, it)
+        }
+    }
+
     val formattedPros by invoking {
         if (pros.isEmpty())
             "None yet, add one via /$AddProCommandName"
         else
-            pros.joinToString("\n") { " - $it" }
+            markdown(pros.joinToString("\n") { "+ $it" }).blockCode("diff")
     }
 
     var cons: Collection<String> by serializedJson(Questions.cons)
 
     fun modifyCons(accumulator: AccumulatorFunc<String>) {
-        pros = pros accumulate accumulator
+        cons = cons accumulate accumulator
+    }
+
+    context(ActionRowBuilder)
+    fun consSelectMenu() = stringSelect("remove-cons:${id.value}") {
+        allowedValues = 1..cons.size.coerceAtMost(25)
+        cons.forEach {
+            option(it, it)
+        }
     }
 
     val formattedCons by invoking {
         if (cons.isEmpty())
             "None yet, add one via /$AddConCommandName"
         else
-            cons.joinToString("\n") { " - $it" }
+            markdown(cons.joinToString("\n") { "- $it" }).blockCode("diff")
     }
 
     val formattedVotes by invoking {
@@ -118,11 +139,13 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
 
     context(EmbedBuilder)
     fun questionEmbed() {
+        color = Color.embedDefault
         title = "${id.value} - $question"
         field {
             name = "Why?"
             value = rationale
         }
+        blankField()
         field {
             inline = true
             name = "Pros"
@@ -139,10 +162,10 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
     }
 
     suspend fun updatePostedMessage(): Boolean {
-        val kord by koinInject<Kord>()
+        val bot by koinInject<CabinetBot>()
 
-        val channel = kord.getGuildOrNull(858547359804555264.snowflake)
-                ?.getChannelOfOrNull<TextChannel>(botConfig.cabinetChannel)
+        val channel = bot.getPrismGuild()
+                .getChannelOfOrNull<TextChannel>(botConfig.cabinetChannel)
                 ?: return false
 
         val message = channel.getMessageOrNull(questionMessage) ?: return false
@@ -158,9 +181,8 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
 data class VoteData(
         val voters: Collection<Snowflake> = listOf()
 ) {
-    fun copyEditVoters(accumulator: AccumulatorFunc<Snowflake>) = copy(
-            voters = voters accumulate accumulator
-    )
+    fun copyEditVoters(accumulator: AccumulatorFunc<Snowflake>) =
+            copy(voters = voters accumulate accumulator)
 }
 
 enum class VoteType {

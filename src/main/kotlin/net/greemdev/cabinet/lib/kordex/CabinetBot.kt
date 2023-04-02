@@ -9,6 +9,7 @@ import org.koin.core.component.inject
 import net.greemdev.cabinet.lib.nixargs.Options
 import net.greemdev.cabinet.lib.util.getOrNull
 import net.greemdev.cabinet.lib.util.slf4j
+import net.greemdev.cabinet.lib.util.snowflake
 import net.greemdev.cabinet.lib.util.tryOrNull
 import org.koin.dsl.bind
 
@@ -16,8 +17,11 @@ class CabinetBot(token: String, b: ExtensibleBotBuilder) : ExtensibleBot(b, toke
 
     val kord: Kord by inject()
 
+    suspend fun getPrismGuild() = kord.getGuildOrThrow(prismSmpId.snowflake)
+
     override val logger = Companion.logger
     companion object {
+        val prismSmpId = 858547359804555264u
         val logger by slf4j { CabinetBot::class }
 
         fun programArgs() = ::cli.getOrNull() ?: error("There are no command-line arguments set.")

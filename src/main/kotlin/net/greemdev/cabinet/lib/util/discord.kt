@@ -33,6 +33,14 @@ val Member.highestRole: Role
         return role ?: error("User has no roles.")
     }
 
+private const val zws = "\u200E"
+
+fun EmbedBuilder.blankField(inline: Boolean = false) = field {
+    name = zws
+    value = zws
+    this.inline = inline
+}
+
 infix fun EmbedBuilder.colorOf(member: Member?) {
     color = tryOrNull { member?.highestRole }?.color
 }
@@ -44,11 +52,15 @@ fun EmbedBuilder.colorOfOrDefault(member: Member?) {
 val User.effectiveAvatar
     get() = avatar ?: defaultAvatar
 
+val Member.isCabinetMember: Boolean
+    get() = roleIds.contains(900431261015879721u.snowflake)
+
 suspend fun UserBehavior.createMessageOrNull(content: String) = getDmChannelOrNull()?.createMessage(content)
 suspend fun UserBehavior.createMessageOrNull(builder: suspend UserMessageCreateBuilder.() -> Unit) = getDmChannelOrNull()?.createMessage { builder() }
 suspend fun UserBehavior.createEmbedOrNull(builder: suspend EmbedBuilder.() -> Unit) = getDmChannelOrNull()?.createEmbed { builder() }
 
-val Color.Companion.embedDefault by invoking { ColorParser.unsafeParse(botConfig.defaultEmbedColor).kColor }
+
+val Color.Companion.embedDefault by invoking { ColorParser.unsafeParse(botConfig.embedColor).kColor }
 
 fun PresenceBuilder.use(activity: DiscordBotActivity) {
     when (activity.type) {

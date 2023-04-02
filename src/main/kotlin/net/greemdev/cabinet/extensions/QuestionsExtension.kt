@@ -4,7 +4,9 @@ import com.kotlindiscord.kord.extensions.components.forms.ModalForm
 import com.kotlindiscord.kord.extensions.extensions.ephemeralSlashCommand
 import com.kotlindiscord.kord.extensions.extensions.publicSlashCommand
 import com.kotlindiscord.kord.extensions.types.respond
+import dev.kord.core.behavior.channel.createEmbed
 import dev.kord.rest.builder.message.create.embed
+import dev.kord.x.emoji.Emojis
 import net.greemdev.cabinet.lib.kordex.get
 import net.greemdev.cabinet.botConfig
 import net.greemdev.cabinet.database.entities.Question
@@ -23,7 +25,7 @@ const val StartQuestionCommandName = "start-question"
 class QuestionsExtension : CabinetExtension("questions") {
 
     override suspend fun setup() {
-        publicSlashCommand(::StartQuestionModalForm) {
+        ephemeralSlashCommand(::StartQuestionModalForm) {
             name = StartQuestionCommandName
             description = "Pose a question to the Cabinet. This is not intended for regular users."
 
@@ -43,7 +45,7 @@ class QuestionsExtension : CabinetExtension("questions") {
                     return@action
                 }
 
-                val q = transaction {
+                val question = transaction {
                     Question.new {
                         asker = user.id
                         question = rawQuestion
@@ -59,10 +61,14 @@ class QuestionsExtension : CabinetExtension("questions") {
                     }
                 }
 
-                val questionMessage = respond { embed { q.questionEmbed() } }
+                respond {
+                    content = Emojis.ballotBoxWithCheck.unicode
+                }
+
+                val questionMessage = channel.createEmbed { question.questionEmbed() }
 
                 transaction {
-                    Question.findById(q.id)!!.questionMessage = questionMessage.id
+                    question.questionMessage = questionMessage.id
                 }
             }
         }

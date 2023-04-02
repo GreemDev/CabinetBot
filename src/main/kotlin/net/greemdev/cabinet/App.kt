@@ -8,7 +8,7 @@ import dev.kord.core.supplier.EntitySupplyStrategy
 import dev.kord.gateway.*
 import io.ktor.util.logging.*
 import kotlinx.coroutines.runBlocking
-import net.greemdev.cabinet.extensions.QuestionsExtension
+import net.greemdev.cabinet.extensions.*
 import org.jetbrains.exposed.sql.SchemaUtils
 import net.greemdev.cabinet.database.x.*
 import net.greemdev.cabinet.database.entities.*
@@ -65,6 +65,7 @@ suspend fun mainAsync(sw: Stopwatch) {
 
         extensions {
             add(::QuestionsExtension)
+            add(::ProsAndConsExtension)
         }
 
         intents {

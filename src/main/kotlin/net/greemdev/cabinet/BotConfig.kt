@@ -24,7 +24,7 @@ data class BotConfig(
     val cabinetChannel: Snowflake,
     val game: String,
     val ownerId: String,
-    val defaultEmbedColor: String
+    val embedColor: String
 ) {
     companion object {
         /**
@@ -55,13 +55,7 @@ data class BotConfig(
             if (file().readText().isEmpty())
                 write()
 
-            get().ifPresent {
-                val cpr = ColorParser.tryParse(it.defaultEmbedColor)
-                cpr.exceptionOrNull()?.let { t ->
-                    logger.error("Invalid color defined", t)
-                    logger.warn("Please fix the above issue and restart.")
-                }
-            }
+            get() // has a color check in it since it's dynamically loaded
         }
 
         fun file() = File(fileloc).also {
@@ -77,11 +71,20 @@ data class BotConfig(
 
         fun get(): java.util.Optional<BotConfig> =
             optionalOf(try {
-                Json.decodeFromString(file().readText())
+                Json.decodeFromString<BotConfig>(file().readText())
             } catch (e: Exception) {
                 e.printStackTrace()
                 null
-            })
+            }).also { opt ->
+                opt.ifPresent {
+                    val cpr = ColorParser.tryParse(it.embedColor)
+                    cpr.exceptionOrNull()?.let { t ->
+                        logger.error("Invalid color defined", t)
+                        logger.warn("Please fix the above issue and restart.")
+                        exitProcess(-1)
+                    }
+                }
+            }
     }
 
     @Throws(IllegalArgumentException::class)
