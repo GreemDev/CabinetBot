@@ -40,8 +40,8 @@ class CacheException(message: String, cause: Throwable? = null) : Exception(mess
 
 inline fun <reified V> CheckContextWithCache<*>.getCached(key: () -> String): V {
     val k = key()
-    try {
-        return cache.getOf(k)
+    return try {
+        cache.getOf(k)
     } catch (e: ClassCastException) {
         throw CacheException("Cache value present at key $k, but not of type ${V::class.simpleName}", e)
     } catch (e: IllegalArgumentException) {

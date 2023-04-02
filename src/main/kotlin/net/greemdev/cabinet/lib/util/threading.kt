@@ -109,7 +109,7 @@ val coroutineExceptionHandler = CoroutineExceptionHandler { _, t ->
         throw t
     }
     if (t !is CancellationException)
-        coroutineLog.error(t) { "Unhandled throwable in coroutine" }
+        coroutineLog.error(t) { "Exception in coroutine" }
 }
 
 val scheduler = Scheduler()

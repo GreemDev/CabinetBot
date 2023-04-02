@@ -10,4 +10,4 @@ fun<T : TextInputWidget<T>> TextInputWidget<T>.get(): String {
     else value ?: ""
 }
 
-inline fun<reified T : Any> dependencyInjection() = getKoin().inject<T>()
+inline fun<reified T : Any> koinInject() = getKoin().inject<T>()

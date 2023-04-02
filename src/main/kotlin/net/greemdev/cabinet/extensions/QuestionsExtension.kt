@@ -8,17 +8,15 @@ import dev.kord.rest.builder.message.create.embed
 import net.greemdev.cabinet.lib.kordex.get
 import net.greemdev.cabinet.botConfig
 import net.greemdev.cabinet.database.entities.Question
-import net.greemdev.cabinet.database.entities.VoteData
-import net.greemdev.cabinet.extensions.commands.CommandArgs
+import net.greemdev.cabinet.database.entities.VoteType
 import net.greemdev.cabinet.lib.kordex.CabinetExtension
 import net.greemdev.cabinet.lib.kordex.createCheck
 import net.greemdev.cabinet.lib.util.Quad
-import net.greemdev.cabinet.lib.util.transactionAsync
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.transactions.transaction
 
 
-const val AddProCommandName = "add-pro"
-const val AddConCommandName = "add-con"
+
 const val VoteCommandName = "cabinet-vote"
 const val StartQuestionCommandName = "start-question"
 
@@ -45,10 +43,9 @@ class QuestionsExtension : CabinetExtension("questions") {
                     return@action
                 }
 
-                val q = transactionAsync {
-                    val askerId = getUser().id
+                val q = transaction {
                     Question.new {
-                        asker = askerId
+                        asker = user.id
                         question = rawQuestion
                         rationale = rawRationale
                         pros = when(rawPros) {
@@ -60,7 +57,7 @@ class QuestionsExtension : CabinetExtension("questions") {
                             else -> rawCons.split(';')
                         }
                     }
-                }.await()
+                }
 
                 val questionMessage = respond { embed { q.questionEmbed() } }
 
@@ -69,6 +66,7 @@ class QuestionsExtension : CabinetExtension("questions") {
                 }
             }
         }
+
         ephemeralSlashCommand(CommandArgs::Vote) {
             name = VoteCommandName
             description = "Vote for a specific question."
@@ -76,39 +74,41 @@ class QuestionsExtension : CabinetExtension("questions") {
                 if (botConfig.locked)
                     fail("Bot is locked.")
             }
+
             action {
-                transactionAsync {
-                    val q = Question.findById(arguments.id.toLong()) ?: run {
+                val type = VoteType.fromCommandArg(arguments.voteType)
+                val question = transaction {
+                    Question.findById(arguments.id.toLong())
+                } ?: run {
+                     respond {
+                         content = "Couldn't find a question with that ID."
+                     }
+                    return@action
+                }
+
+                if (question.isImmutable) {
+                    respond {
+                        content = "You can no longer vote for that question as it has already been voted for by everybody."
+                    }
+                    return@action
+                }
+
+                val voteResult = transaction { question.handleVote(type, user.id) }
+
+                when (val t = voteResult.exceptionOrNull()) {
+                    null -> {
+                        question.updatePostedMessage()
+
                         respond {
-                            content = "Couldn't find a question with that ID."
+                            content = "You have voted ${type.phrase()}. You can change your vote at any time via using the same command again, as long as the question is still active!"
                         }
-                        return@transactionAsync
                     }
-
-                    if (q.isImmutable) {
+                    else -> {
                         respond {
-                            content = "You can no longer vote for that question as it has already been voted for by everybody."
-                        }
-                        return@transactionAsync
-                    }
-
-                    val type = VoteData.Type.fromCommandArg(arguments.voteType)
-
-                    when (val t = q.handleVote(type, user.id).exceptionOrNull()) {
-                        null -> {
-                            q.updateMessage(bot.kordRef)
-
-                            respond {
-                                content = "You have voted ${type.phrase()}. You can change your vote at any time via using the same command again, as long as the question is still active!"
-                            }
-                        }
-                        else -> {
-                            respond {
-                                content = t.message
-                            }
+                            content = t.message
                         }
                     }
-                }.await()
+                }
             }
         }
     }

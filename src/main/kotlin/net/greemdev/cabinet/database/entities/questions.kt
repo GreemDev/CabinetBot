@@ -2,42 +2,37 @@ package net.greemdev.cabinet.database.entities
 
 import dev.kord.common.entity.Snowflake
 import dev.kord.core.Kord
-import dev.kord.core.behavior.channel.asChannelOf
 import dev.kord.core.behavior.edit
 import dev.kord.core.behavior.getChannelOfOrNull
 import dev.kord.core.entity.channel.TextChannel
 import dev.kord.rest.builder.message.EmbedBuilder
-import dev.kord.rest.builder.message.create.MessageCreateBuilder
-import dev.kord.rest.builder.message.create.embed
 import dev.kord.rest.builder.message.modify.embed
 import kotlinx.serialization.Serializable
-import net.greemdev.cabinet.BotConfig
 import net.greemdev.cabinet.botConfig
 import org.jetbrains.exposed.dao.*
 import org.jetbrains.exposed.dao.id.*
 import net.greemdev.cabinet.database.entities.json.*
 import net.greemdev.cabinet.database.x.*
-import net.greemdev.cabinet.extensions.AddConCommandName
-import net.greemdev.cabinet.extensions.AddProCommandName
-import net.greemdev.cabinet.extensions.VoteCommandName
+import net.greemdev.cabinet.extensions.*
+import net.greemdev.cabinet.lib.kordex.koinInject
 import net.greemdev.cabinet.lib.util.*
 
 object Questions : LongIdTable() {
-    val asker           = ulong("askerId")
-    val question        = varchar("question", 1000)
-    val rationale       = varchar("reasoning", 1500)
-    val postedMessage   = ulong("messageId").default(0u)
-    val hasEnded        = bool("ended").default(false)
-    val positiveVotes   = json("pos", VoteData(VoteData.Type.Yes))
-    val negativeVotes   = json("neg", VoteData(VoteData.Type.No))
-    val abstainedVotes  = json("abs", VoteData(VoteData.Type.None))
-    val pros            = json("positives", arrayOf<String>())
-    val cons            = json("negatives", arrayOf<String>())
+    val asker = ulong("askerId")
+    val question = varchar("question", 1000)
+    val rationale = varchar("reasoning", 1500)
+    val postedMessage = ulong("messageId").default(0u)
+    val hasEnded = bool("ended").default(false)
+    val positiveVotes = json("pos", VoteData())
+    val negativeVotes = json("neg", VoteData())
+    val abstainedVotes = json("abs", VoteData())
+    val pros = json("positives", arrayOf<String>())
+    val cons = json("negatives", arrayOf<String>())
 }
 
 const val cantDoubleVote = "Can't double vote."
 
-class Question(id: EntityID<Long>): Entity<Long>(id) {
+class Question(id: EntityID<Long>) : Entity<Long>(id) {
     companion object : EntityClass<Long, Question>(Questions)
 
     var asker by serializedSnowflake(Questions.asker)
@@ -49,15 +44,15 @@ class Question(id: EntityID<Long>): Entity<Long>(id) {
     var negativeVotes: VoteData by serializedJson(Questions.negativeVotes)
     var abstainedVotes: VoteData by serializedJson(Questions.abstainedVotes)
 
-    private fun addVoter(type: VoteData.Type, id: Snowflake) {
-        when(type) {
-            VoteData.Type.Yes -> positivesVotes = positivesVotes.copyEditVoters { +id }
-            VoteData.Type.No -> negativeVotes = negativeVotes.copyEditVoters { +id }
-            VoteData.Type.None -> abstainedVotes = abstainedVotes.copyEditVoters { +id }
+    private fun addVoter(type: VoteType, id: Snowflake) {
+        when (type) {
+            VoteType.Yes -> positivesVotes = positivesVotes.copyEditVoters { +id }
+            VoteType.No -> negativeVotes = negativeVotes.copyEditVoters { +id }
+            VoteType.None -> abstainedVotes = abstainedVotes.copyEditVoters { +id }
         }
     }
 
-    fun handleVote(type: VoteData.Type, id: Snowflake) = runCatching {
+    fun handleVote(type: VoteType, id: Snowflake) = runCatching {
         if (positivesVotes.voters.contains(id) && type.inFavor())
             error(cantDoubleVote)
         if (negativeVotes.voters.contains(id) && type.against())
@@ -143,10 +138,12 @@ class Question(id: EntityID<Long>): Entity<Long>(id) {
         }
     }
 
-    suspend fun updateMessage(kord: Kord): Boolean {
+    suspend fun updatePostedMessage(): Boolean {
+        val kord by koinInject<Kord>()
+
         val channel = kord.getGuildOrNull(858547359804555264.snowflake)
-            ?.getChannelOfOrNull<TextChannel>(botConfig.cabinetChannel)
-            ?: return false
+                ?.getChannelOfOrNull<TextChannel>(botConfig.cabinetChannel)
+                ?: return false
 
         val message = channel.getMessageOrNull(questionMessage) ?: return false
 
@@ -159,44 +156,39 @@ class Question(id: EntityID<Long>): Entity<Long>(id) {
 
 @Serializable
 data class VoteData(
-    val type: Type,
-    val voters: Collection<Snowflake> = listOf()
+        val voters: Collection<Snowflake> = listOf()
 ) {
-
     fun copyEditVoters(accumulator: AccumulatorFunc<Snowflake>) = copy(
-        voters = voters accumulate accumulator
+            voters = voters accumulate accumulator
     )
+}
 
-    @Serializable
-    enum class Type {
-        Yes, No, None;
+enum class VoteType {
+    Yes, No, None;
 
-        fun inFavor() = this == VoteData.Type.Yes
-        fun against() = this == VoteData.Type.No
-        fun abstain() = this == VoteData.Type.None
+    fun inFavor() = this == Yes
+    fun against() = this == No
+    fun abstain() = this == None
 
-        override fun toString() = when(this) {
-            Yes -> "Yay"
-            No -> "Nay"
-            None -> "Abstain"
-        }
+    override fun toString() = when (this) {
+        Yes -> "Yay"
+        No -> "Nay"
+        None -> "Abstain"
+    }
 
-        fun phrase() = when(this) {
-            Yes -> "in favor"
-            No -> "against"
-            None -> "to abstain"
-        }
+    fun phrase() = when (this) {
+        Yes -> "in favor"
+        No -> "against"
+        None -> "to abstain"
+    }
 
-        companion object {
-            fun fromCommandArg(number: String): Type {
-                return when (number) {
+    companion object {
+        fun fromCommandArg(number: String) =
+                when (number) {
                     "1" -> Yes
                     "0" -> No
                     "-1" -> None
                     else -> error("nah")
                 }
-            }
-        }
-
     }
 }

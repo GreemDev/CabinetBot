@@ -41,20 +41,26 @@ fun main(args: Array<out String>) {
 suspend fun mainAsync(sw: Stopwatch) {
     val bot = buildCabinetBot(botConfig.token) {
         presence {
-            use(try {
-                botConfig.parseGame()
-            } catch (e: IllegalArgumentException) {
-                CabinetBot.logger.error(e)
-                DiscordBotActivity(botConfig.game, ActivityType.Game)
-            }.also {
-                CabinetBot.logger.info {
-                    string {
-                        +"Activity set as ${it.type} \"${it.name}\""
-                        if (it.type == ActivityType.Streaming)
-                            +", at ${it.url.value}"
+            //val gameResult = runCatching { botConfig.parseGame() }
+            val game = with (runCatching { botConfig.parseGame() }) {
+                when {
+                    isSuccess -> getOrThrow()
+                    else -> {
+                        CabinetBot.logger.error(exceptionOrNull()!!)
+                        DiscordBotActivity(botConfig.game, ActivityType.Game)
                     }
                 }
-            })
+            }
+
+            CabinetBot.logger.info {
+                string {
+                    +"Activity set as ${game.type} \"${game.name}\""
+                    if (game.type == ActivityType.Streaming)
+                        +", at ${game.url.value}"
+                }
+            }
+
+            status = PresenceStatus.Invisible
         }
 
         extensions {
