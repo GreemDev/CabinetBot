@@ -23,12 +23,8 @@ fun<T> KProperty0<T>.runOrNull(block: (T) -> Unit): T?
 fun<C, R> getting(func: C.(KProperty<*>) -> R) =
     ReadOnlyProperty<C, R> { thisRef, property -> func(thisRef, property) }
 
-suspend fun<T> KProperty0<T>.suspendOrNull(block: suspend (T) -> Unit): T? = with(getOrNull()) {
-    val opt = toOptional()
-    if (opt.isPresent)
-        block(opt.get())
-    opt.orNull()
-}
+suspend fun<T> KProperty0<T>.suspendOrNull(block: suspend (T) -> Unit): T? = getOrNull()?.also { block(it) }
+
 
 fun regexString(options: Collection<RegexOption>, pattern: () -> CharSequence) = RegexProperty(options.toSet(), pattern().string())
 fun regexString(vararg options: RegexOption, pattern: () -> CharSequence) = RegexProperty(options.toSet(), pattern().string())
@@ -37,7 +33,6 @@ interface PropertyValue<T> : ReadOnlyProperty<Any?, T> {
     override fun getValue(thisRef: Any?, property: KProperty<*>): T = get(thisRef)
     fun get(thisRef: Any?): T
 }
-
 interface MutablePropertyValue<TReceiver, T> : ReadWriteProperty<TReceiver, T> {
     override fun getValue(thisRef: TReceiver, property: KProperty<*>): T = get(thisRef)
     override fun setValue(thisRef: TReceiver, property: KProperty<*>, value: T) = set(thisRef, value)

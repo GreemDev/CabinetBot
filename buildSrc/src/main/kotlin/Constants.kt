@@ -37,7 +37,7 @@ object versions {
     const val project = "1.0.0"
     const val jvm = "11"
     const val shadow = "7.1.2"
-    const val kotlin = "1.8.10"
+    const val kotlin = "1.8.20"
     const val coroutines = "1.6.4"
     const val exposed = "0.41.1"
     const val kordEmoji = "0.5.0"

@@ -24,19 +24,19 @@ data class BotConfig(
     val cabinetChannel: Snowflake,
     val game: String,
     val ownerId: String,
-    val embedColor: String
+    val embedColor: String,
+    val autoAbstain: List<Snowflake>
 ) {
     companion object {
-        /**
-         * Pseudo-constructor providing an instance of [BotConfig] with the default values.
-         */
+        // Pseudo-constructor providing an instance of [BotConfig] with the default values defined at the bottom of this file
         operator fun invoke() = BotConfig(
-            true,
+            defaultLockedValue,
             defaultTokenValue,
-            858791066147618857.snowflake,
+            defaultCabinetChannelValue.snowflake,
             defaultGameValue,
             defaultOwnerIdValue,
-            defaultEmbedColorValue
+            defaultEmbedColorValue,
+            listOf()
         )
 
         init {
@@ -47,12 +47,14 @@ data class BotConfig(
         private val logger by slf4j("Config")
 
         fun checks() {
-            if (!file().exists()) {
+            val f = file()
+            if (!f.exists()) {
                 write()
                 logger.warn("Please fill in the config.json config file in the data folder, and restart me!")
                 exitProcess(-1)
             }
-            if (file().readText().isEmpty())
+
+            if (f.readText().isEmpty())
                 write()
 
             get() // has a color check in it since it's dynamically loaded
@@ -66,7 +68,7 @@ data class BotConfig(
         }
 
         fun write(config: BotConfig = BotConfig()) {
-            file().writeText(prettyJson.encodeToString(config))
+            file().writeText(formatJsonString(config, pretty = true))
         }
 
         fun get(): java.util.Optional<BotConfig> =
@@ -116,8 +118,9 @@ data class BotConfig(
     }
 }
 
-
+private const val defaultLockedValue = true
 private const val defaultTokenValue = "your-token-here"
+private const val defaultCabinetChannelValue = 858791066147618857u
 private const val defaultGameValue = "your-game-here"
 private const val defaultOwnerIdValue = "your-id-here"
 private const val defaultEmbedColorValue = "#7000FB"

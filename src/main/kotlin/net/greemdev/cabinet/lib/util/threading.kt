@@ -39,18 +39,6 @@ fun Job.invokeOnSuccess(block: () -> Unit) = invokeOnCompletion {
         block()
 }
 
-fun blockWhile(predicate: () -> Boolean) {
-    while (predicate()) {
-        //
-    }
-}
-
-fun blockUntil(predicate: () -> Boolean) {
-    while (!predicate()) {
-        //
-    }
-}
-
 suspend infix fun <T> Deferred<T>.thenTake(block: suspend (T) -> Unit) = thenRun(block)
 suspend infix fun <T> Deferred<T>.then(block: suspend (T) -> T): T = block(await())
 suspend infix fun <T, R> Deferred<T>.thenRun(block: suspend (T) -> R): R = block(await())
@@ -95,7 +83,7 @@ private val coroutineLog by slf4j { "Coroutines" }
 private val pool = Executors.newScheduledThreadPool(ForkJoinPool.getCommonPoolParallelism().coerceAtLeast(2)) {
     thread(
         start = false,
-        name = "Volte-Work-Thread",
+        name = "Bot-Work-Thread",
         isDaemon = true,
         block = it::run
     )
@@ -112,7 +100,7 @@ val coroutineExceptionHandler = CoroutineExceptionHandler { _, t ->
         coroutineLog.error(t) { "Exception in coroutine" }
 }
 
-val scheduler = Scheduler()
+val scheduler by lazy(::Scheduler)
 
 val scope by lazy {
     CoroutineScope(dispatcher + supervisor + coroutineExceptionHandler)

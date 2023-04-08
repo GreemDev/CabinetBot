@@ -1,26 +1,30 @@
 package net.greemdev.cabinet.database.entities
 
-import dev.kord.common.Color
+import com.kotlindiscord.kord.extensions.utils.getJumpUrl
 import dev.kord.common.entity.Snowflake
-import dev.kord.common.kColor
-import dev.kord.core.Kord
+import dev.kord.core.behavior.channel.createMessage
 import dev.kord.core.behavior.edit
 import dev.kord.core.behavior.getChannelOfOrNull
+import dev.kord.core.entity.Member
 import dev.kord.core.entity.channel.TextChannel
-import dev.kord.rest.builder.component.ActionRowBuilder
-import dev.kord.rest.builder.component.option
-import dev.kord.rest.builder.message.EmbedBuilder
+import dev.kord.rest.builder.message.create.embed
 import dev.kord.rest.builder.message.modify.embed
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.Serializable
 import net.greemdev.cabinet.botConfig
 import org.jetbrains.exposed.dao.*
 import org.jetbrains.exposed.dao.id.*
-import net.greemdev.cabinet.database.entities.json.*
 import net.greemdev.cabinet.database.x.*
-import net.greemdev.cabinet.extensions.*
+import net.greemdev.cabinet.extensions.procon.AddConCommandName
+import net.greemdev.cabinet.extensions.procon.AddProCommandName
+import net.greemdev.cabinet.extensions.questions.VoteCommandName
 import net.greemdev.cabinet.lib.kordex.CabinetBot
+import net.greemdev.cabinet.lib.kordex.koinComponent
 import net.greemdev.cabinet.lib.kordex.koinInject
 import net.greemdev.cabinet.lib.util.*
+import org.jetbrains.exposed.sql.Transaction
+import kotlin.jvm.Throws
 
 object Questions : LongIdTable() {
     val asker = ulong("askerId")
@@ -38,7 +42,12 @@ object Questions : LongIdTable() {
 const val cantDoubleVote = "Can't double vote."
 
 class Question(id: EntityID<Long>) : Entity<Long>(id) {
-    companion object : EntityClass<Long, Question>(Questions)
+    companion object : EntityClass<Long, Question>(Questions) {
+        context(Transaction)
+        fun findConcludedVotes(): List<Question> {
+            return Question.find { Questions.hasEnded eq true }.toList()
+        }
+    }
 
     var asker by serializedSnowflake(Questions.asker)
     var question by Questions.question
@@ -57,7 +66,17 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
         }
     }
 
-    fun handleVote(type: VoteType, id: Snowflake) = runCatching {
+    fun addAutoAbstainers() =
+            botConfig.autoAbstain.let {
+                abstainedVotes = abstainedVotes.copyEditVoters {
+                    +it
+                }
+                it.size
+            }
+
+
+    context(Transaction)
+    suspend fun handleVote(type: VoteType, id: Snowflake) = runCatching {
         if (positivesVotes.voters.contains(id) && type.inFavor())
             error(cantDoubleVote)
         if (negativeVotes.voters.contains(id) && type.against())
@@ -81,23 +100,19 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
             }
 
         addVoter(type, id)
-    }
+        if (getMissingVoters().isEmpty()) {
+            isImmutable = true
+        }
+    }.exceptionOrNull()
 
 
     var isImmutable by Questions.hasEnded
 
     var pros: Collection<String> by serializedJson(Questions.pros)
 
+    context(Transaction)
     fun modifyPros(accumulator: AccumulatorFunc<String>) {
         pros = pros accumulate accumulator
-    }
-
-    context(ActionRowBuilder)
-    fun prosSelectMenu() = stringSelect("remove-pros:${id.value}") {
-        allowedValues = 1..pros.size.coerceAtMost(25)
-        pros.forEach {
-            option(it, it)
-        }
     }
 
     val formattedPros by invoking {
@@ -109,16 +124,9 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
 
     var cons: Collection<String> by serializedJson(Questions.cons)
 
+    context(Transaction)
     fun modifyCons(accumulator: AccumulatorFunc<String>) {
         cons = cons accumulate accumulator
-    }
-
-    context(ActionRowBuilder)
-    fun consSelectMenu() = stringSelect("remove-cons:${id.value}") {
-        allowedValues = 1..cons.size.coerceAtMost(25)
-        cons.forEach {
-            option(it, it)
-        }
     }
 
     val formattedCons by invoking {
@@ -129,7 +137,6 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
     }
 
     val formattedVotes by invoking {
-
         val votesInFavor = positivesVotes.voters.size
         val votesAgainst = negativeVotes.voters.size
         val votesAbstained = abstainedVotes.voters.size
@@ -137,29 +144,26 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
         "$votesInFavor in favor, $votesAgainst against, with $votesAbstained abstaining || Vote via /$VoteCommandName"
     }
 
-    context(EmbedBuilder)
-    fun questionEmbed() {
-        color = Color.embedDefault
-        title = "${id.value} - $question"
-        field {
-            name = "Why?"
-            value = rationale
+    @Throws(VoteTiedException::class)
+    suspend fun voteWinner(): VoteType? = if (isImmutable) {
+        val positive = positivesVotes.voters.size
+        val negative = negativeVotes.voters.size
+
+        if (positive == negative) {
+            throw VoteTiedException()
+        } else {
+            if (positive > negative)
+                VoteType.Yes
+            else VoteType.No
         }
-        blankField()
-        field {
-            inline = true
-            name = "Pros"
-            value = formattedPros
-        }
-        field {
-            inline = true
-            name = "Cons"
-            value = formattedCons
-        }
-        footer {
-            text = formattedVotes
-        }
-    }
+
+    } else null
+
+    suspend fun getMissingVoters(): Collection<Member> =
+            koinComponent<CabinetBot>().getCabinetMembers().filter {
+                it.id !in positivesVotes.voters || it.id !in negativeVotes.voters || it.id !in abstainedVotes.voters
+            }.toList()
+
 
     suspend fun updatePostedMessage(): Boolean {
         val bot by koinInject<CabinetBot>()
@@ -168,14 +172,49 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
                 .getChannelOfOrNull<TextChannel>(botConfig.cabinetChannel)
                 ?: return false
 
-        val message = channel.getMessageOrNull(questionMessage) ?: return false
+        val message = channel.getMessageOrNull(questionMessage)
 
-        message.edit {
-            embed { questionEmbed() }
+        return if (isImmutable) {
+            if (message == null)
+                false
+            else try {
+                val winner = voteWinner()!!
+                channel.createMessage {
+                    content = bot.getCabinetMemberRole().mention
+                    embed {
+                        title = "${id.value} - $question"
+                        description = if (winner.inFavor())
+                            "This has passed, with ${positivesVotes.voters.size - negativeVotes.voters.size} more in favor than against, and ${abstainedVotes.voters.size} abstaining."
+                        else
+                            "This **has not** passed, with ${negativeVotes.voters.size - positivesVotes.voters.size} more against than in favor, and ${abstainedVotes.voters.size} abstaining."
+                    }
+                }
+                message.delete()
+                false
+            } catch (e: VoteTiedException) {
+                channel.createMessage {
+                    content = bot.getCurrentPresident().mention
+                    embed {
+                        title = "An ultra-rare tie has appeared!"
+                        description = e.message!!.format(message.getJumpUrl())
+                    }
+                }
+                false
+            }
+        } else {
+            if (message == null)
+                false
+            else {
+                message.edit {
+                    embed { fromQuestion(this@Question) }
+                }
+                true
+            }
         }
-        return true
     }
 }
+
+class VoteTiedException : Exception("There is a tie. Please independently decide if you'd like to make [this question](%s) pass, or to leave it as a deadlock and thus veto it, via /cabinet-question-override")
 
 @Serializable
 data class VoteData(

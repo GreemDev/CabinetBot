@@ -1,52 +1,9 @@
 package net.greemdev.cabinet.lib.util
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Deferred
-import kotlinx.coroutines.coroutineScope
 import kotlinx.datetime.Instant
 import net.greemdev.cabinet.lib.util.parse.ParsingError
 import java.nio.ByteBuffer
 import java.util.*
-
-private val placeholderStart = '{'
-private val placeholderEnd = '}'
-
-
-fun <T> placeholderMapOf(vararg entries: Pair<String, suspend (T) -> String>): PlaceholderMap<T> = hashMapOf(
-    *entries.map { "$placeholderStart{it.first}$placeholderEnd" to it.second }.array()
-)
-
-typealias PlaceholderMap<T> = HashMap<String, suspend (T) -> String>
-
-fun <T> placeholderString(format: String, replacementMap: Map<String, suspend T.() -> String> = mapOf()) =
-    PlaceholderString<T>(format).apply {
-        replacementMap.forEach(::withPlaceholder)
-    }
-
-data class PlaceholderString<T>(val format: String) {
-    private val placeholders = hashMapOf<String, suspend T.() -> String>()
-
-    fun Pair<String, suspend T.() -> String>.unaryPlus() {
-        withPlaceholder(first, second)
-    }
-
-    fun withPlaceholder(key: String, valueFunc: suspend T.() -> String): PlaceholderString<T> {
-        placeholders[key] = valueFunc
-        return this
-    }
-
-    suspend operator fun invoke(ctx: T, ignoreCase: Boolean = true) = replace(ctx, ignoreCase)
-
-    suspend fun replace(context: T, ignoreCase: Boolean = true): String {
-        var temp = format
-        placeholders.forEach { (key, replacement) ->
-            val formattedKey = key.requirePrefix(placeholderStart).requireSuffix(placeholderEnd)
-
-            temp = temp.replace(formattedKey, context.replacement(), ignoreCase)
-        }
-        return temp
-    }
-}
 
 fun CharSequence.charAfter(index: Int) = this[index.inc()]
 fun CharSequence.charBefore(index: Int) = this[index.dec()]
@@ -122,16 +79,6 @@ inline fun string(initial: CharSequence = "", builderScope: StringScope.() -> Un
 inline fun buildString(initialValue: String, builderAction: StringBuilder.() -> Unit): String {
     return StringBuilder(initialValue).apply(builderAction).toString()
 }
-
-fun String.requirePrefix(prefix: Any?): String =
-    if (!startsWith(prefix.string()))
-        prefix.string() + this
-    else this
-
-fun String.requireSuffix(suffix: Any?): String =
-    if (!endsWith(suffix.string()))
-        this + suffix
-    else this
 
 
 fun String.trimBefore(index: Int) = substring(index, (length + 1).coerceAtMost(length))

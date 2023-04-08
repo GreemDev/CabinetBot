@@ -1,22 +1,21 @@
 package net.greemdev.cabinet
 
-import net.greemdev.cabinet.lib.meta.Version
+import net.greemdev.cabinet.lib.Version
 import net.greemdev.cabinet.lib.nixargs.Options
 import net.greemdev.cabinet.lib.nixargs.cli
 import net.greemdev.cabinet.lib.util.slf4j
 import java.io.File
-import kotlin.io.path.fileVisitor
 
 var nostart = false
 
 fun getCli() = cli {
     commandHandler(::runCommands)
     options {
-        option("version")
-        option("nostart")
-        option("resetconfig")
-        option("resetdb")
-        option("unlock")
+        option("version", "Prints the version to the console.")
+        option("nostart", "Exits the program when the command-line arguments are finished.")
+        option("resetconfig", "Reset the bot config file.")
+        option("resetdb", "Reset the bot database file; requiring confirmation.")
+        option("unlock", "Unlock the bot, allowing for votes to be held.")
     }
 }
 

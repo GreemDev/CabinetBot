@@ -1,15 +1,21 @@
 package net.greemdev.cabinet.database.x
 
+import dev.kord.common.entity.Snowflake
+import kotlinx.datetime.Instant
 import org.jetbrains.exposed.dao.Entity
 import org.jetbrains.exposed.sql.Column
 import net.greemdev.cabinet.lib.util.*
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
 
+private val missingTransformersErrorMessage by lazy {
+    "${ParsedDataBackedProperty::class.simpleName} cannot be created without both encoding and decoding functions."
+}
+
 abstract class DataPropertyBuilder<ID : Comparable<ID>, S, R>(private val column: Column<S>) {
     companion object {
-        fun<ID : Comparable<ID>, S, R> createNew(column: Column<S>) =
-            object : DataPropertyBuilder<ID, S, R>(column) {}
+        fun <ID : Comparable<ID>, S, R> forColumn(column: Column<S>) =
+                object : DataPropertyBuilder<ID, S, R>(column) {}
     }
 
     private var encoder: Parser<R, S>? = null
@@ -25,23 +31,19 @@ abstract class DataPropertyBuilder<ID : Comparable<ID>, S, R>(private val column
         return this
     }
 
-    infix fun encoder(block: (R) -> S): DataPropertyBuilder<ID, S, R> = encoder(newCustomParser(block))
-    infix fun decoder(block: (S) -> R): DataPropertyBuilder<ID, S, R> = decoder(newCustomParser(block))
+    infix fun encoder(block: (R) -> S) = encoder(newCustomParser(block))
+    infix fun decoder(block: (S) -> R) = decoder(newCustomParser(block))
 
-    fun build(): ParsedDataBackedProperty<ID, S, R> {
-        val errorMessage by lazy {
-            "${ParsedDataBackedProperty::class.simpleName} cannot be created without both encoding and decoding functions."
-        }
-        checkNotNull(encoder) { errorMessage }
-        checkNotNull(decoder) { errorMessage }
-        return ParsedDataBackedProperty(column, decoder!!, encoder!!)
-    }
+    fun build() = ParsedDataBackedProperty<ID, S, R>(column,
+            checkNotNull(decoder, ::missingTransformersErrorMessage),
+            checkNotNull(encoder, ::missingTransformersErrorMessage)
+    )
 }
 
 open class ParsedDataBackedProperty<ID : Comparable<ID>, S, R>(
-    private val column: Column<S>,
-    private val fromData: Parser<S, R>,
-    private val toData: Parser<R, S>
+        private val column: Column<S>,
+        private val fromData: Parser<S, R>,
+        private val toData: Parser<R, S>
 ) : ReadWriteProperty<Entity<ID>, R> {
     override fun getValue(thisRef: Entity<ID>, property: KProperty<*>): R = thisRef.run {
         val raw = column.getValue(this, property)
@@ -50,8 +52,32 @@ open class ParsedDataBackedProperty<ID : Comparable<ID>, S, R>(
 
     override fun setValue(thisRef: Entity<ID>, property: KProperty<*>, value: R) {
         thisRef.apply {
-            val string = toData.unsafeParse(value)
-            column.setValue(this, property, string)
+            val serialized = toData.unsafeParse(value)
+            column.setValue(this, property, serialized)
         }
     }
+
+    companion object {
+        fun <ID : Comparable<ID>> snowflake(column: Column<ULong>) =
+                ParsedDataBackedProperty<ID, ULong, Snowflake>(
+                        column,
+                        newCustomParser { it.snowflake },
+                        newCustomParser { it.value }
+                )
+
+        fun <ID : Comparable<ID>> instant(column: Column<Long>) =
+                ParsedDataBackedProperty<ID, Long, Instant>(
+                        column,
+                        newCustomParser { Instant.fromEpochMilliseconds(it) },
+                        newCustomParser { it.toEpochMilliseconds() }
+                )
+
+        inline fun <ID : Comparable<ID>, reified R> json(column: Column<String>, pretty: Boolean = false) =
+                ParsedDataBackedProperty<ID, String, R>(
+                        column,
+                        newCustomParser { parseJsonString(it, pretty) },
+                        newCustomParser { formatJsonString(it, pretty) }
+                )
+    }
+
 }

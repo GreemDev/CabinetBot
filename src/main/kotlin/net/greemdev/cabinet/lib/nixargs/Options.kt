@@ -17,7 +17,7 @@ data class Options(private val os: OptionSet) {
         Option(
             try {
                 os.valueOf(option)
-            } catch (_: Throwable) {
+            } catch (e: OptionException) {
                 os.valuesOf(option)
             }
         )
@@ -27,7 +27,7 @@ data class Options(private val os: OptionSet) {
         Option(
             try {
                 os.valueOf(spec)
-            } catch (_: Throwable) {
+            } catch (_: OptionException) {
                 os.valuesOf(spec)
             }
         )

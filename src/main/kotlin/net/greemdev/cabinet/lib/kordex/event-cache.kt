@@ -5,13 +5,16 @@ import com.kotlindiscord.kord.extensions.utils.MutableStringKeyedMap
 import com.kotlindiscord.kord.extensions.utils.getOf
 import dev.kord.core.event.Event
 import net.greemdev.cabinet.lib.util.invoking
-import net.greemdev.cabinet.lib.util.string
 import kotlin.reflect.KProperty
 
 suspend fun<T : Event, V> CheckContextWithCache<T>.cacheNonnull(key: String, message: String? = null, block: suspend (T) -> V?) {
     createCheck {
         cacheNonnull(key, message, block)
     }
+}
+
+suspend fun<T : Event, V> CheckCreateScope<T>.cacheNonnull(key: String, message: String? = null, block: suspend (T) -> V?) {
+    cacheNonnullThenGet(key, message, block)
 }
 
 suspend fun<T : Event, V> CheckContextWithCache<T>.cacheNonnullThenGet(key: String, message: String? = null, block: suspend (T) -> V?): V {
@@ -25,16 +28,9 @@ suspend fun<T : Event, V> CheckContextWithCache<T>.cacheNonnullThenGet(key: Stri
 suspend fun<T : Event, V> CheckCreateScope<T>.cacheNonnullThenGet(key: String, message: String? = null, block: suspend (T) -> V?): V {
     val result = block(event)
     failIf(result == null, message)
-    cacheContext.cache[key] = result!!
+    context.cache[key] = result!!
     return result
 }
-
-suspend fun<T : Event, V> CheckCreateScope<T>.cacheNonnull(key: String, message: String? = null, block: suspend (T) -> V?) {
-    val result = block(event)
-    failIf(result == null, message)
-    cacheContext.cache[key] = result!!
-}
-
 
 class CacheException(message: String, cause: Throwable? = null) : Exception(message, cause)
 

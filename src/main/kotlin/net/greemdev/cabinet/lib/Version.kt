@@ -1,6 +1,6 @@
 @file:Suppress("unused")
 
-package net.greemdev.cabinet.lib.meta
+package net.greemdev.cabinet.lib
 
 fun KotlinVersion.formatted() = "$major.$minor.$patch"
 

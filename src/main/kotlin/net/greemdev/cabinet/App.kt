@@ -8,23 +8,24 @@ import dev.kord.core.supplier.EntitySupplyStrategy
 import dev.kord.gateway.*
 import io.ktor.util.logging.*
 import kotlinx.coroutines.runBlocking
-import net.greemdev.cabinet.extensions.*
 import org.jetbrains.exposed.sql.SchemaUtils
 import net.greemdev.cabinet.database.x.*
 import net.greemdev.cabinet.database.entities.*
+import net.greemdev.cabinet.extensions.procon.ProsAndConsExtension
+import net.greemdev.cabinet.extensions.questions.QuestionsExtension
 import net.greemdev.cabinet.lib.kordex.*
-import net.greemdev.cabinet.lib.meta.onStartup
+import net.greemdev.cabinet.lib.onStartup
 import net.greemdev.cabinet.lib.util.*
 
+val logger by slf4j<CabinetBot>()
+
 fun main(args: Array<out String>) {
-    val sw = Stopwatch.startNew()
-    BotConfig.checks()
-
-
-
     runBlocking {
         CabinetBot.init(getCli().handleCommands(args))
     }
+
+    val sw = Stopwatch.startNew()
+    BotConfig.checks()
 
     if (!nostart) {
         BotDatabase start {
@@ -41,18 +42,17 @@ fun main(args: Array<out String>) {
 suspend fun mainAsync(sw: Stopwatch) {
     val bot = buildCabinetBot(botConfig.token) {
         presence {
-            //val gameResult = runCatching { botConfig.parseGame() }
-            val game = with (runCatching { botConfig.parseGame() }) {
+            val game = with (runCatching(botConfig::parseGame)) {
                 when {
                     isSuccess -> getOrThrow()
                     else -> {
-                        CabinetBot.logger.error(exceptionOrNull()!!)
+                        logger.error(exceptionOrNull()!!)
                         DiscordBotActivity(botConfig.game, ActivityType.Game)
                     }
                 }
             }
 
-            CabinetBot.logger.info {
+            logger.info {
                 string {
                     +"Activity set as ${game.type} \"${game.name}\""
                     if (game.type == ActivityType.Streaming)
@@ -70,11 +70,8 @@ suspend fun mainAsync(sw: Stopwatch) {
 
         intents {
             +Intent.Guilds
-            +Intent.GuildMembers
             +Intent.MessageContent
             +Intent.GuildMessages
-            +Intent.GuildMessageReactions
-            +Intent.DirectMessages
         }
 
         kord {
@@ -85,7 +82,7 @@ suspend fun mainAsync(sw: Stopwatch) {
     }
 
     bot.on<ReadyEvent> {
-        onStartup(bot, sw)
+        onStartup(sw)
     }
 
     bot.start()

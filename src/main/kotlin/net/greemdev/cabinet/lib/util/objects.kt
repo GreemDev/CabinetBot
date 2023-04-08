@@ -16,7 +16,8 @@ suspend inline fun<T : AsyncDisposable> usingAsync(value: T, block: T.() -> Unit
     value.dispose()
 }
 
-data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+operator fun<T> Result<T>.component1() = getOrNull()
+operator fun Result<*>.component2() = exceptionOrNull()
 
 abstract class Disposable {
     open val disposed = false

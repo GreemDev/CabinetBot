@@ -9,12 +9,12 @@ import net.greemdev.cabinet.lib.util.*
 import org.jetbrains.exposed.dao.id.IdTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.statements.StatementContext
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import java.util.*
 
-fun <ID : Comparable<ID>, T : Entity<ID>> EntityClass<ID, T>.findOptional(id: ID?) =
-    if (id == null)
-        optionalOf()
-    else
-        findById(id).toOptional()
+fun <ID : Comparable<ID>, T : Entity<ID>> EntityClass<ID, T>.findOptional(id: ID?): Optional<T> {
+    return findById(id ?: return optionalOf()).toOptional()
+}
 
 fun <T : Entity<ULong>> EntityClass<ULong, T>.findBySnowflake(id: Snowflake?) = findOptional(id?.value)
 
@@ -27,29 +27,31 @@ fun <T : Entity<ULong>> EntityClass<ULong, T>.findBySnowflake(id: Snowflake?) = 
  * @exception IllegalStateException thrown when the property builder does not have one or both of the value converters.
  */
 fun <ID : Comparable<ID>, S, R> serialized(
-    column: Column<S>,
-    initializer: DataPropertyBuilder<ID, S, R>.() -> Unit
-) = DataPropertyBuilder.createNew<ID, S, R>(column).apply(initializer).build()
+        column: Column<S>,
+        initializer: DataPropertyBuilder<ID, S, R>.() -> Unit
+) = DataPropertyBuilder.forColumn<ID, S, R>(column).apply(initializer).build()
 
 /**
  * A property delegate for a kotlinx [Instant] whose value is represented in the Exposed [column] as a [Long] value.
  */
-fun <ID : Comparable<ID>> serializedInstant(
-    column: Column<Long>
-) = serialized<ID, Long, Instant>(column) {
-    encoder { it.toEpochMilliseconds() }
-    decoder { Instant.fromEpochMilliseconds(it) }
-}
+fun <ID : Comparable<ID>> serializedInstant(column: Column<Long>) = ParsedDataBackedProperty.instant<ID>(column)
 
 /**
  * A property delegate for a kord [Snowflake] whose value is represented in the Exposed [column] as a [ULong] value.
  */
-fun <ID : Comparable<ID>> serializedSnowflake(
-    column: Column<ULong>
-) = serialized<ID, ULong, Snowflake>(column) {
-    encoder { it.value }
-    decoder { it.snowflake }
-}
+fun <ID : Comparable<ID>> serializedSnowflake(column: Column<ULong>) = ParsedDataBackedProperty.snowflake<ID>(column)
+
+/**
+ * A property delegate for a Kotlin object whose value is represented in the Exposed [column] as a compound JSON string value.
+ * The getter parses the underlying data, and the setter sets the underlying data to its newer counterpart, as JSON.
+ * @param column The varchar column whose value should be treated as a JSON string
+ * @param pretty Whether the JSON is serialized with indentation or not. Default false as it's the best for storing data (less wasted space to hold the same data).
+ */
+@Suppress("UnusedReceiverParameter") //It's used, it's how we resolve ID without needing to pass every type param at the use site; plus, only Exposed entities can have columns anyway.
+inline fun <ID : Comparable<ID>, reified R> Entity<ID>.serializedJson(
+        column: Column<String>,
+        pretty: Boolean = false
+) = ParsedDataBackedProperty.json<ID, R>(column, pretty)
 
 
 /**
@@ -72,14 +74,13 @@ object BotDatabase {
     /**
      * Connects to the database and runs the provided [block] transaction afterwards.
      */
-    // "connects" by accessing BotDatabase.INSTANCE when compiled, which calls the above init block.
-    infix fun <T> start(block: suspend Transaction.() -> T) = runBlocking { transactionAsync { block() }.await() }
+    // "connects" by accessing BotDatabase.INSTANCE (the internal reference to the singleton kotlin object BotDatabase) when compiled, which calls the above init block.
+    infix fun <T> start(block: suspend Transaction.() -> T) = runBlocking { newSuspendedTransaction { block() } }
 }
 
 fun <ID : Comparable<ID>, T : Entity<ID>> EntityClass<ID, T>.listAll(): List<T> = all().toList()
 
-fun <T> Column<T>.default(): T = defaultOrNull() ?: error("Column does not have a default value.")
-fun <T> Column<T>.defaultOrNull(): T? = optionalOf(defaultValueFun).map { it() }.orNull()
+fun <T> Column<T>.defaultValue(): Optional<T> = optionalOf(defaultValueFun).map { it() }
 
 fun Transaction.addCustomLogger(logger: StatementContext.(Transaction) -> Unit) = addLogger(object : SqlLogger {
     override fun log(context: StatementContext, transaction: Transaction) {
@@ -90,3 +91,9 @@ fun Transaction.addCustomLogger(logger: StatementContext.(Transaction) -> Unit) 
 const val h2StringMaxLength = 1048576
 
 fun Table.varchar(name: String, collate: String? = null) = varchar(name, h2StringMaxLength, collate)
+
+inline fun <reified T> Table.json(name: String, default: T? = null, collate: String? = null) =
+        varchar(name, collate)
+                .applyIf(default != null) {
+                    default(formatJsonString(default, false))
+                }

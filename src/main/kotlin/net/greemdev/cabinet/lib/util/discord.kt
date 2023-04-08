@@ -13,12 +13,16 @@ import dev.kord.core.entity.Role
 import dev.kord.core.entity.User
 import dev.kord.core.kordLogger
 import dev.kord.gateway.builder.PresenceBuilder
+import dev.kord.rest.builder.component.ActionRowBuilder
+import dev.kord.rest.builder.component.option
 import dev.kord.rest.builder.message.EmbedBuilder
 import dev.kord.rest.builder.message.create.UserMessageCreateBuilder
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onEach
 import kotlinx.datetime.Instant
 import net.greemdev.cabinet.botConfig
+import net.greemdev.cabinet.database.entities.Question
+import net.greemdev.cabinet.lib.kordex.CabinetBot
 import net.greemdev.cabinet.lib.util.parse.ColorParser
 
 val Member.highestRole: Role
@@ -49,11 +53,54 @@ fun EmbedBuilder.colorOfOrDefault(member: Member?) {
     color = tryOrNull { member?.highestRole }?.color ?: Color.embedDefault
 }
 
+fun ActionRowBuilder.prosSelect(question: Question) = stringSelect("remove-pros:${question.id.value}") {
+    allowedValues = 1..question.pros.size.coerceAtMost(25)
+    question.pros.forEach {
+        option(it, it)
+    }
+}
+
+fun ActionRowBuilder.consSelect(question: Question) = stringSelect("remove-cons:${question.id.value}") {
+    allowedValues = 1..question.cons.size.coerceAtMost(25)
+    question.cons.forEach {
+        option(it, it)
+    }
+}
+
+fun EmbedBuilder.fromQuestion(question: Question) {
+    if (question.isImmutable) {
+        author {
+            name = "This vote has concluded; it is now readonly."
+        }
+    }
+
+    color = Color.embedDefault
+    title = "${question.id.value} - ${question.question}"
+    field {
+        name = "Why?"
+        value = question.rationale
+    }
+    blankField()
+    field {
+        inline = true
+        name = "Pros"
+        value = question.formattedPros
+    }
+    field {
+        inline = true
+        name = "Cons"
+        value = question.formattedCons
+    }
+    footer {
+        text = question.formattedVotes
+    }
+}
+
 val User.effectiveAvatar
     get() = avatar ?: defaultAvatar
 
 val Member.isCabinetMember: Boolean
-    get() = roleIds.contains(900431261015879721u.snowflake)
+    get() = roleIds.contains(CabinetBot.cabinetMemberRoleId.snowflake)
 
 suspend fun UserBehavior.createMessageOrNull(content: String) = getDmChannelOrNull()?.createMessage(content)
 suspend fun UserBehavior.createMessageOrNull(builder: suspend UserMessageCreateBuilder.() -> Unit) = getDmChannelOrNull()?.createMessage { builder() }

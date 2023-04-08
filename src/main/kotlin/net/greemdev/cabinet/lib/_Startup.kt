@@ -1,4 +1,4 @@
-package net.greemdev.cabinet.lib.meta
+package net.greemdev.cabinet.lib
 
 import net.greemdev.cabinet.lib.kordex.CabinetBot
 import net.greemdev.cabinet.lib.util.*
@@ -20,7 +20,7 @@ private val asciiHeader = """
 fun indentedHeaderLines() = asciiHeader.splitByNewLine().map { ' ' * 10 + it }
 
 
-fun onStartup(bot: CabinetBot, sw: Stopwatch) {
+fun onStartup(sw: Stopwatch) {
     val l = CabinetBot.logger
     l.info { separatorLine }
     indentedHeaderLines()

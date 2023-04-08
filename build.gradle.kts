@@ -37,6 +37,7 @@ kotlin {
             }
         }
     }
+    jvmToolchain(11)
 }
 
 tasks {
@@ -51,6 +52,6 @@ tasks {
     }
 
     shadowJar {
-        archiveFileName.set("Cabinet-Bot-$version.jar")
+        archiveFileName.set("Cabinet-Bot.jar")
     }
 }

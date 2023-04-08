@@ -5,24 +5,27 @@ import com.kotlindiscord.kord.extensions.builders.ExtensibleBotBuilder
 import com.kotlindiscord.kord.extensions.utils.getKoin
 import com.kotlindiscord.kord.extensions.utils.loadModule
 import dev.kord.core.Kord
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import org.koin.core.component.inject
 import net.greemdev.cabinet.lib.nixargs.Options
-import net.greemdev.cabinet.lib.util.getOrNull
-import net.greemdev.cabinet.lib.util.slf4j
-import net.greemdev.cabinet.lib.util.snowflake
-import net.greemdev.cabinet.lib.util.tryOrNull
+import net.greemdev.cabinet.lib.util.*
 import org.koin.dsl.bind
 
 class CabinetBot(token: String, b: ExtensibleBotBuilder) : ExtensibleBot(b, token) {
 
     val kord: Kord by inject()
 
-    suspend fun getPrismGuild() = kord.getGuildOrThrow(prismSmpId.snowflake)
+    suspend fun getPrismGuild() = kord.getGuildOrThrow(prismSmpGuildId.snowflake)
+    suspend fun getCabinetMembers() = getPrismGuild().members.filter { it.isCabinetMember }
+    suspend fun getCabinetMemberRole() = getPrismGuild().getRole(cabinetMemberRoleId.snowflake)
+    suspend fun getCurrentPresident() = getPrismGuild().members.first { it.roleIds.contains(presidentRoleId.snowflake) }
 
-    override val logger = Companion.logger
+    override val logger = net.greemdev.cabinet.logger
     companion object {
-        val prismSmpId = 858547359804555264u
-        val logger by slf4j { CabinetBot::class }
+        val prismSmpGuildId = 858547359804555264u
+        val cabinetMemberRoleId = 900431261015879721u
+        val presidentRoleId = 858548175711240192u
 
         fun programArgs() = ::cli.getOrNull() ?: error("There are no command-line arguments set.")
         fun init(opt: Options) {
@@ -68,7 +71,7 @@ class BotBuilder : ExtensibleBotBuilder() {
                 bot.addExtension(it)
             } catch (e: Exception) {
                 logger.error(e) {
-                    "Failed to set up extension: $it"
+                    "Failed to set up extension $it"
                 }
             }
         }
