@@ -72,8 +72,7 @@ class ProsAndConsExtension : CabinetExtension("pros-cons") {
                 description = "Add a con to a question."
 
                 createCheck {
-                    if (botConfig.locked)
-                        fail("Bot is locked.")
+                    failIf(botConfig.locked, "Bot is locked.")
                     val question = cacheNonnullThenGet("question", "Couldn't find a question with that ID.") {
                         transaction {
                             Question.findById(it.interaction.command.integers["vote-id"]!!)
@@ -88,8 +87,7 @@ class ProsAndConsExtension : CabinetExtension("pros-cons") {
                 description = "Remove a con from a question."
 
                 createCheck {
-                    if (botConfig.locked)
-                        fail("Bot is locked.")
+                    failIf(botConfig.locked, "Bot is locked.")
                     val question = cacheNonnullThenGet("question", "Couldn't find a question with that ID.") {
                         transaction {
                             Question.findById(it.interaction.command.integers["vote-id"]!!)
@@ -103,7 +101,7 @@ class ProsAndConsExtension : CabinetExtension("pros-cons") {
 
         event<SelectMenuInteractionCreateEvent> {
             createCheck {
-                failIf(!event.interaction.user.asMember(CabinetBot.prismSmpGuildId.snowflake).isCabinetMember, "You are not a member of the Cabinet.")
+                failIf(!event.interaction.user.asMember(botConfig.guild).isCabinetMember, "You are not a member of the Cabinet.")
             }
             action {
                 if (event.interaction.componentId.startsWith("remove-pro")) {

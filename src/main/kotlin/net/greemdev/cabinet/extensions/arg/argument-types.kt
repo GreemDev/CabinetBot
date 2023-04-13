@@ -25,6 +25,13 @@ class Vote : QuestionArguments() {
     }
 }
 
+class QuestionTiebreaker : QuestionArguments() {
+    val tiebreakerOverride by boolean {
+        name = "force-through"
+        description = "Do you want to force this vote through?"
+    }
+}
+
 class AddPro : QuestionArguments() {
     val pro by string {
         name = "pro"

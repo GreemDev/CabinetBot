@@ -1,3 +1,5 @@
+@file:Suppress("RemoveExplicitTypeArguments")
+
 package net.greemdev.cabinet.extensions
 
 import com.kotlindiscord.kord.extensions.commands.Arguments
@@ -7,107 +9,88 @@ import com.kotlindiscord.kord.extensions.commands.application.slash.SlashCommand
 import com.kotlindiscord.kord.extensions.components.forms.ModalForm
 import com.kotlindiscord.kord.extensions.types.respond
 
+typealias EphemeralCommandWithModal<A, M> = suspend EphemeralSlashCommandContext<A, M>.(M?) -> Unit
+typealias EphemeralCommandWithRequiredModal<A, M> = suspend EphemeralSlashCommandContext<A, M>.(M) -> Unit
+typealias EphemeralCommand<A, M> = suspend EphemeralSlashCommandContext<A, M>.() -> Unit
+typealias PublicCommandWithModal<A, M> = suspend PublicSlashCommandContext<A, M>.(M?) -> Unit
+typealias PublicCommandWithRequiredModal<A, M> = suspend PublicSlashCommandContext<A, M>.(M?) -> Unit
+typealias PublicCommand<A, M> = suspend PublicSlashCommandContext<A, M>.() -> Unit
+
 const val MissingModalMessage = "Fill in the popup! Run the command again!"
 
 // ephemeral commands
 fun<A : Arguments, M : ModalForm> ephemeralCommand(
-    action: suspend EphemeralSlashCommandContext<A, M>.(M?) -> Unit
-)= lazy {
-    object : BotCommand<EphemeralSlashCommandContext<A, M>, A, M>({
-        action(it)
-    }) {}.action
-}
+    body: EphemeralCommandWithModal<A, M>
+)= lazy { ecmd<A, M>(body).action }
 
 fun<A : Arguments, M : ModalForm> ephemeralCommandRequireModal(
-    action: suspend EphemeralSlashCommandContext<A, M>.(M) -> Unit
+    body: EphemeralCommandWithRequiredModal<A, M>
 )= lazy {
-    object : BotCommand<EphemeralSlashCommandContext<A, M>, A, M>({
-        if (it == null) {
-            respond {
-                content = MissingModalMessage
-            }
-        } else action(it)
-    }) {}.action
+    ecmd<A, M> {
+        it?.let { body(it) } ?: respond { content = MissingModalMessage }
+    }.action
 }
 
 fun<A : Arguments> ephemeralCommand(
-    action: suspend EphemeralSlashCommandContext<A, ModalForm>.() -> Unit
-) = lazy {
-    object : BotCommand<EphemeralSlashCommandContext<A, ModalForm>, A, ModalForm>({
-        action()
-    }) {}.action
-}
+    body: EphemeralCommand<A, ModalForm>
+) = lazy { ecmd<A, ModalForm> { body() }.action }
 
-fun<M : ModalForm> ephemeralCommand(
-    action: suspend EphemeralSlashCommandContext<Arguments, M>.(M?) -> Unit
-) = lazy {
-    object : BotCommand<EphemeralSlashCommandContext<Arguments, M>, Arguments, M>({
-        action(it)
-    }) {}.action
-}
+fun<M : ModalForm> ephemeralCommandModalOnly(
+    body: EphemeralCommandWithModal<Arguments, M>
+) = lazy { ecmd<Arguments, M>(body).action }
 
-fun<M : ModalForm> ephemeralCommandRequireModal(
-    action: suspend EphemeralSlashCommandContext<Arguments, M>.(M) -> Unit
+fun<M : ModalForm> ephemeralCommandRequireModalOnly(
+    body: EphemeralCommandWithRequiredModal<Arguments, M>
 ) = lazy {
-    object : BotCommand<EphemeralSlashCommandContext<Arguments, M>, Arguments, M>({
-        if (it == null) {
-            respond {
-                content = MissingModalMessage
-            }
-        } else action(it)
-    }) {}.action
+   ecmd<Arguments, M> {
+       it?.let { body(it) } ?: respond { content = MissingModalMessage }
+    }.action
 }
 
 // public commands
 fun<A : Arguments, M : ModalForm> publicCommand(
-    action: suspend PublicSlashCommandContext<A, M>.(M?) -> Unit
-) = lazy {
-    object : BotCommand<PublicSlashCommandContext<A, M>, A, M>({
-        action(it)
-    }) {}.action
-}
+    body: PublicCommandWithModal<A, M>
+) = lazy { pcmd<A, M>(body).action }
 
 fun<A : Arguments, M : ModalForm> publicCommandRequireModal(
-    action: suspend PublicSlashCommandContext<A, M>.(M) -> Unit
+    body: PublicCommandWithRequiredModal<A, M>
 ) = lazy {
-    object : BotCommand<PublicSlashCommandContext<A, M>, A, M>({
-        if (it == null) {
-            respond {
-                content = MissingModalMessage
-            }
-        } else action(it)
-    }) {}.action
+    pcmd<A, M> {
+        it?.let { body(it) } ?: respond { content = MissingModalMessage }
+    }.action
 }
 
 
 
 fun<A : Arguments> publicCommand(
-    action: suspend PublicSlashCommandContext<A, ModalForm>.() -> Unit
+    body: PublicCommand<A, ModalForm>
 ) = lazy {
-    object : BotCommand<PublicSlashCommandContext<A, ModalForm>, A, ModalForm>({
-        action()
-    }) {}.action
+    pcmd<A, ModalForm> {
+        body()
+    }.action
 }
 
-fun<M : ModalForm> publicCommand(
-    action: suspend PublicSlashCommandContext<Arguments, M>.(M?) -> Unit
+fun<M : ModalForm> publicCommandOnlyModal(
+    body: PublicCommandWithModal<Arguments, M>
+) = lazy { pcmd<Arguments, M>(body).action }
+
+fun<M : ModalForm> publicCommandRequireModalOnly(
+    body: PublicCommandWithRequiredModal<Arguments, M>
 ) = lazy {
-    object : BotCommand<PublicSlashCommandContext<Arguments, M>, Arguments, M>({
-        action(it)
-    }) {}.action
+    pcmd<Arguments, M> {
+        it?.let { body(it) } ?: respond { content = MissingModalMessage }
+    }.action
 }
 
-fun<M : ModalForm> publicCommandRequireModal(
-    action: suspend PublicSlashCommandContext<Arguments, M>.(M) -> Unit
-) = lazy {
-    object : BotCommand<PublicSlashCommandContext<Arguments, M>, Arguments, M>({
-        if (it == null) {
-            respond {
-                content = MissingModalMessage
-            }
-        } else action(it)
-    }) {}.action
-}
+@Suppress("SpellCheckingInspection") //internal
+private fun<A : Arguments, M : ModalForm> ecmd(
+    action: EphemeralCommandWithModal<A, M>
+) = object : BotCommand<EphemeralSlashCommandContext<A, M>, A, M>(action) {}
+
+@Suppress("SpellCheckingInspection") //internal
+private fun<A : Arguments, M : ModalForm> pcmd(
+    action: PublicCommandWithModal<A, M>
+) = object : BotCommand<PublicSlashCommandContext<A, M>, A, M>(action) {}
 
 private abstract class BotCommand<C : SlashCommandContext<C, A, M>, A : Arguments, M : ModalForm>(
     val action: suspend C.(M?) -> Unit

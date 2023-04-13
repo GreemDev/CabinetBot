@@ -5,13 +5,21 @@ import mu.KLogger
 import mu.KotlinLogging
 import kotlin.reflect.KClass
 
-fun slf4j(classOrName: Any) = slf4j { classOrName }
+fun slf4j(fn: () -> Any) = lazy {
+    when (val loggerName = fn()) {
+        is Class<*> -> KotlinLogging.logger(loggerName.simpleName)
+        is KClass<*> -> KotlinLogging.logger(loggerName.simpleName ?: "Anonymous")
+        else -> KotlinLogging.logger(loggerName.toString())
+    }
+}
+
+fun slf4j(classOrName: Any) = slf4j(const(classOrName))
 inline fun<reified T> slf4j() = slf4j(T::class)
 
-fun logger(clazz: Class<*>): KLogger = KotlinLogging.logger(clazz.simpleName)
-inline fun <reified T> logger(): KLogger = logger(T::class)
-fun logger(name: String): KLogger = KotlinLogging.logger(name)
-fun logger(klass: KClass<*>): KLogger = KotlinLogging.logger(klass.simpleName ?: "Anon")
+fun logger(clazz: Class<*>) = KotlinLogging.logger(clazz.simpleName)
+inline fun <reified T> logger() = logger(T::class)
+fun logger(name: String? = null) = name?.let { KotlinLogging.logger(name) } ?: net.greemdev.cabinet.logger
+fun logger(klass: KClass<*>) = KotlinLogging.logger(klass.simpleName ?: "Anon")
 fun logger(klass: KClass<*>, func: KLogger.() -> Unit) = logger(klass).func()
 
 operator fun KLogger.invoke(block: KLogger.() -> Unit) = apply(block)

@@ -11,22 +11,18 @@ fun CharSequence.charBefore(index: Int) = this[index.dec()]
 fun CharSequence.splitByNewLine() = split('\n')
 fun CharSequence.splitBySingleSpace() = split(' ')
 
-inline fun <TIn, TOut> newCustomParser(crossinline parseBlock: (TIn) -> TOut) = Parser byCustom parseBlock
+inline fun <TIn, TOut> Parser(crossinline parseBlock: (TIn) -> TOut) =
+    object : Parser<TIn, TOut>() {
+        override fun parse(value: TIn): TOut = parseBlock(value)
+    }
 
 abstract class Parser<in TInput, TOutput> {
     protected abstract fun parse(value: TInput): TOutput
 
     @Throws(ParsingError::class)
     infix fun unsafeParse(value: TInput): TOutput = parse(value)
+    operator fun invoke(value: TInput) = unsafeParse(value)
     infix fun tryParse(value: TInput): Result<TOutput> = runCatching { parse(value) }
-
-    operator fun invoke(value: TInput) = tryParse(value)
-
-    companion object {
-        inline infix fun <TIn, TOut> byCustom(crossinline parser: (TIn) -> TOut) = object : Parser<TIn, TOut>() {
-            override fun parse(value: TIn): TOut = parser(value)
-        }
-    }
 }
 
 data class StringScope(val inner: StringBuilder) : CharSequence by inner, Comparable<StringBuilder> by inner,

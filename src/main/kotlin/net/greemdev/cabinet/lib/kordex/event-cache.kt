@@ -1,3 +1,5 @@
+@file:Suppress("RedundantSuspendModifier")
+
 package net.greemdev.cabinet.lib.kordex
 
 import com.kotlindiscord.kord.extensions.checks.types.CheckContextWithCache
@@ -7,17 +9,17 @@ import dev.kord.core.event.Event
 import net.greemdev.cabinet.lib.util.invoking
 import kotlin.reflect.KProperty
 
-suspend fun<T : Event, V> CheckContextWithCache<T>.cacheNonnull(key: String, message: String? = null, block: suspend (T) -> V?) {
+suspend inline fun<T : Event, V> CheckContextWithCache<T>.cacheNonnull(key: String, message: String? = null, crossinline block: (T) -> V?) {
     createCheck {
         cacheNonnull(key, message, block)
     }
 }
 
-suspend fun<T : Event, V> CheckCreateScope<T>.cacheNonnull(key: String, message: String? = null, block: suspend (T) -> V?) {
+suspend inline fun<T : Event, V> CheckCreateScope<T>.cacheNonnull(key: String, message: String? = null, block: (T) -> V?) {
     cacheNonnullThenGet(key, message, block)
 }
 
-suspend fun<T : Event, V> CheckContextWithCache<T>.cacheNonnullThenGet(key: String, message: String? = null, block: suspend (T) -> V?): V {
+suspend inline fun<T : Event, V> CheckContextWithCache<T>.cacheNonnullThenGet(key: String, message: String? = null, crossinline block: (T) -> V?): V {
     var result: V? = null
     createCheck {
         result = cacheNonnullThenGet(key, message, block)
@@ -25,7 +27,7 @@ suspend fun<T : Event, V> CheckContextWithCache<T>.cacheNonnullThenGet(key: Stri
     return result!!
 }
 
-suspend fun<T : Event, V> CheckCreateScope<T>.cacheNonnullThenGet(key: String, message: String? = null, block: suspend (T) -> V?): V {
+suspend inline fun<T : Event, V> CheckCreateScope<T>.cacheNonnullThenGet(key: String, message: String? = null, block: (T) -> V?): V {
     val result = block(event)
     failIf(result == null, message)
     context.cache[key] = result!!

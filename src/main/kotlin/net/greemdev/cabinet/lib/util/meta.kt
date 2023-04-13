@@ -51,3 +51,6 @@ fun duration(func: Duration.Companion.() -> Duration) = func(Duration)
 fun<T> Optional<T>.orNull(): T? = orElse(null)
 fun<T> T?.toOptional() = if (this == null) Optional.empty() else Optional.of(this)
 fun <T> optionalOf(value: T? = null) = value.toOptional()
+fun<T> Result<T>.opt() = getOrNull().toOptional()
+
+fun<T> const(value: T): () -> T  = { value }

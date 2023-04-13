@@ -54,27 +54,31 @@ fun Duration.ms(): String = "${inWholeMilliseconds}ms"
 
 inline fun<T> compare(pair: Pair<Instant, Instant>, block: TimePairComparer.() -> T): T = object : TimePairComparer(pair) {}.block()
 
-
-fun Instant.comparer() = object : TimeComparer(this) {}
-fun java.time.Instant.comparer() = toKotlinInstant().comparer()
-
 abstract class TimePairComparer(val pairing: Pair<Instant, Instant>) {
 
     fun timeSince(): Duration {
         val (left, right) = pairing
-        return left.comparer().timeSince(right)
+        return timeComparer(left).timeSince(right)
     }
 
     fun timeUntil(): Duration {
         val (left, right) = pairing
-        return left.comparer().timeUntil(right)
+        return timeComparer(left).timeUntil(right)
     }
 
-    fun isSame() = pairing.first == pairing.second
-    fun isAfter() = pairing.first.comparer().succeeds(pairing.second)
-    fun isBefore() = pairing.first.comparer().precedes(pairing.second)
+    fun areIdentical() = pairing.first == pairing.second
+    fun isAfter(): Boolean {
+        val (left, right) = pairing
+        return timeComparer(left).succeeds(right)
+    }
+    fun isBefore(): Boolean {
+        val (left, right) = pairing
+        return timeComparer(left).precedes(right)
+    }
 }
 
+fun timeComparer(instant: Instant) = object : TimeComparer(instant) {}
+fun timeComparer(instant: java.time.Instant) = timeComparer(instant.toKotlinInstant())
 
 @Suppress("NOTHING_TO_INLINE")
 abstract class TimeComparer(val instant: Instant) {

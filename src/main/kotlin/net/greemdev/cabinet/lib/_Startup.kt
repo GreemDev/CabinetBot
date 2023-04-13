@@ -1,7 +1,7 @@
 package net.greemdev.cabinet.lib
 
-import net.greemdev.cabinet.lib.kordex.CabinetBot
 import net.greemdev.cabinet.lib.util.*
+import net.greemdev.cabinet.logger
 
 const val separatorLine =
     "------------------------------------------------------------------------------------------"
@@ -21,10 +21,8 @@ fun indentedHeaderLines() = asciiHeader.splitByNewLine().map { ' ' * 10 + it }
 
 
 fun onStartup(sw: Stopwatch) {
-    val l = CabinetBot.logger
-    l.info { separatorLine }
-    indentedHeaderLines()
-        .forEach(l::info)
-    l.info { separatorLine }
-    l.info { "CabinetBot v${Version.formatted()} is online, took ${sw.stop().ms()}." }
+    logger.info(separatorLine)
+    indentedHeaderLines().forEach(logger::info)
+    logger.info(separatorLine)
+    logger.info { "CabinetBot v${Version.formatted()} is online, took ${sw.stop().ms()}." }
 }

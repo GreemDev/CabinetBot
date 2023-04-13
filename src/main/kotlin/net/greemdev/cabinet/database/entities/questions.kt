@@ -4,24 +4,21 @@ import com.kotlindiscord.kord.extensions.utils.getJumpUrl
 import dev.kord.common.entity.Snowflake
 import dev.kord.core.behavior.channel.createMessage
 import dev.kord.core.behavior.edit
-import dev.kord.core.behavior.getChannelOfOrNull
 import dev.kord.core.entity.Member
-import dev.kord.core.entity.channel.TextChannel
+import dev.kord.core.entity.Message
 import dev.kord.rest.builder.message.create.embed
 import dev.kord.rest.builder.message.modify.embed
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.toList
-import kotlinx.serialization.Serializable
 import net.greemdev.cabinet.botConfig
 import org.jetbrains.exposed.dao.*
 import org.jetbrains.exposed.dao.id.*
 import net.greemdev.cabinet.database.x.*
 import net.greemdev.cabinet.extensions.procon.AddConCommandName
 import net.greemdev.cabinet.extensions.procon.AddProCommandName
+import net.greemdev.cabinet.extensions.questions.TiebreakerCommandName
 import net.greemdev.cabinet.extensions.questions.VoteCommandName
 import net.greemdev.cabinet.lib.kordex.CabinetBot
 import net.greemdev.cabinet.lib.kordex.koinComponent
-import net.greemdev.cabinet.lib.kordex.koinInject
 import net.greemdev.cabinet.lib.util.*
 import org.jetbrains.exposed.sql.Transaction
 import kotlin.jvm.Throws
@@ -32,11 +29,12 @@ object Questions : LongIdTable() {
     val rationale = varchar("reasoning", 1500)
     val postedMessage = ulong("messageId").default(0u)
     val hasEnded = bool("ended").default(false)
-    val positiveVotes = json("pos", VoteData())
-    val negativeVotes = json("neg", VoteData())
-    val abstainedVotes = json("abs", VoteData())
+    val positiveVotes = json("pos", listOf<Snowflake>())
+    val negativeVotes = json("neg", listOf<Snowflake>())
+    val abstainedVotes = json("abs", listOf<Snowflake>())
     val pros = json("positives", arrayOf<String>())
     val cons = json("negatives", arrayOf<String>())
+    val wasOverriden = bool("overridden").nullable().default(null)
 }
 
 const val cantDoubleVote = "Can't double vote."
@@ -44,66 +42,73 @@ const val cantDoubleVote = "Can't double vote."
 class Question(id: EntityID<Long>) : Entity<Long>(id) {
     companion object : EntityClass<Long, Question>(Questions) {
         context(Transaction)
-        fun findConcludedVotes(): List<Question> {
-            return Question.find { Questions.hasEnded eq true }.toList()
-        }
+        fun findConcludedVotes() =
+            find { Questions.hasEnded eq true }.toList()
     }
 
     var asker by serializedSnowflake(Questions.asker)
     var question by Questions.question
     var rationale by Questions.rationale
+    var presidentialOverride by Questions.wasOverriden
     var questionMessage by serializedSnowflake(Questions.postedMessage)
 
-    var positivesVotes: VoteData by serializedJson(Questions.positiveVotes)
-    var negativeVotes: VoteData by serializedJson(Questions.negativeVotes)
-    var abstainedVotes: VoteData by serializedJson(Questions.abstainedVotes)
+    var positivesVotes: Collection<Snowflake> by serializedJson(Questions.positiveVotes)
+
+    fun modifyPositiveVotes(accumulator: AccumulatorFunc<Snowflake>) {
+        positivesVotes = positivesVotes accumulate accumulator
+    }
+
+    var negativeVotes: Collection<Snowflake> by serializedJson(Questions.negativeVotes)
+
+    fun modifyNegativeVotes(accumulator: AccumulatorFunc<Snowflake>) {
+        negativeVotes = negativeVotes accumulate accumulator
+    }
+
+    var abstainedVotes: Collection<Snowflake> by serializedJson(Questions.abstainedVotes)
+
+    fun modifyAbstainedVotes(accumulator: AccumulatorFunc<Snowflake>) {
+        abstainedVotes = abstainedVotes accumulate accumulator
+    }
 
     private fun addVoter(type: VoteType, id: Snowflake) {
         when (type) {
-            VoteType.Yes -> positivesVotes = positivesVotes.copyEditVoters { +id }
-            VoteType.No -> negativeVotes = negativeVotes.copyEditVoters { +id }
-            VoteType.None -> abstainedVotes = abstainedVotes.copyEditVoters { +id }
+            VoteType.Yes -> modifyPositiveVotes { +id }
+            VoteType.No -> modifyNegativeVotes { +id }
+            VoteType.None -> modifyAbstainedVotes { +id }
         }
     }
 
-    fun addAutoAbstainers() =
-            botConfig.autoAbstain.let {
-                abstainedVotes = abstainedVotes.copyEditVoters {
-                    +it
+    fun addAutoAbstainers(cabinetMembers: List<Member>) =
+            botConfig.autoAbstain.let { abstainers ->
+                modifyAbstainedVotes {
+                    +abstainers.filter { abstainer ->
+                        cabinetMembers.any { it.id == abstainer }
+                    }
                 }
-                it.size
+                abstainers.size
             }
 
 
     context(Transaction)
     suspend fun handleVote(type: VoteType, id: Snowflake) = runCatching {
-        if (positivesVotes.voters.contains(id) && type.inFavor())
-            error(cantDoubleVote)
-        if (negativeVotes.voters.contains(id) && type.against())
-            error(cantDoubleVote)
-        if (abstainedVotes.voters.contains(id) && type.abstain())
+        if ((positivesVotes.contains(id) && type.inFavor())
+            or (negativeVotes.contains(id) && type.against())
+            or (abstainedVotes.contains(id) && type.abstain()))
             error(cantDoubleVote)
 
-        if (positivesVotes.voters.contains(id) && !type.inFavor())
-            positivesVotes = positivesVotes.copyEditVoters {
-                -id
-            }
+        if (positivesVotes.contains(id) && !type.inFavor())
+            modifyPositiveVotes { -id }
 
-        if (negativeVotes.voters.contains(id) && !type.against())
-            negativeVotes = negativeVotes.copyEditVoters {
-                -id
-            }
+        if (negativeVotes.contains(id) && !type.against())
+            modifyNegativeVotes { -id }
 
-        if (abstainedVotes.voters.contains(id) && !type.abstain())
-            abstainedVotes = abstainedVotes.copyEditVoters {
-                -id
-            }
+        if (abstainedVotes.contains(id) && !type.abstain())
+            modifyAbstainedVotes { -id }
 
         addVoter(type, id)
-        if (getMissingVoters().isEmpty()) {
+        if (getMissingVoters().isEmpty())
             isImmutable = true
-        }
-    }.exceptionOrNull()
+    }
 
 
     var isImmutable by Questions.hasEnded
@@ -137,17 +142,17 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
     }
 
     val formattedVotes by invoking {
-        val votesInFavor = positivesVotes.voters.size
-        val votesAgainst = negativeVotes.voters.size
-        val votesAbstained = abstainedVotes.voters.size
+        val votesInFavor = positivesVotes.size
+        val votesAgainst = negativeVotes.size
+        val votesAbstained = abstainedVotes.size
 
         "$votesInFavor in favor, $votesAgainst against, with $votesAbstained abstaining || Vote via /$VoteCommandName"
     }
 
     @Throws(VoteTiedException::class)
-    suspend fun voteWinner(): VoteType? = if (isImmutable) {
-        val positive = positivesVotes.voters.size
-        val negative = negativeVotes.voters.size
+    fun voteWinner(): VoteType? = if (isImmutable) {
+        val positive = positivesVotes.size
+        val negative = negativeVotes.size
 
         if (positive == negative) {
             throw VoteTiedException()
@@ -159,70 +164,62 @@ class Question(id: EntityID<Long>) : Entity<Long>(id) {
 
     } else null
 
-    suspend fun getMissingVoters(): Collection<Member> =
-            koinComponent<CabinetBot>().getCabinetMembers().filter {
-                it.id !in positivesVotes.voters || it.id !in negativeVotes.voters || it.id !in abstainedVotes.voters
-            }.toList()
+    suspend fun getMissingVoters(): List<Member> {
+        return with(koinComponent<CabinetBot>().getCabinetMembers().toList().toMutableList()) {
+            val allVoters = (positivesVotes + negativeVotes + abstainedVotes).toSet()
+            removeAll { it.id in allVoters }
+            this
+        }
+    }
+
+    private fun embedMessageUrl(content: String, message: Message) = markdown(content).maskedUrl(message.getJumpUrl())
+
+    private fun winnerString(winner: VoteType, voteMessage: Message) = string {
+        if (winner.inFavor())
+            +"${embedMessageUrl("This", voteMessage)} has passed, with ${positivesVotes.size - negativeVotes.size} more in favor than against, "
+        else
+            +"${embedMessageUrl("This", voteMessage)} **has not** passed, with ${negativeVotes.size - positivesVotes.size} more against than in favor, "
+
+        +"and ${abstainedVotes.size} abstaining."
+    }
 
 
-    suspend fun updatePostedMessage(): Boolean {
-        val bot by koinInject<CabinetBot>()
+    suspend fun updatePostedMessage() {
+        val bot by CabinetBot
 
-        val channel = bot.getPrismGuild()
-                .getChannelOfOrNull<TextChannel>(botConfig.cabinetChannel)
-                ?: return false
+        val channel = bot.getCabinetChannel()
 
-        val message = channel.getMessageOrNull(questionMessage)
+        val message = channel.getMessageOrNull(questionMessage) ?: return
 
-        return if (isImmutable) {
-            if (message == null)
-                false
-            else try {
+        if (isImmutable) {
+            try {
                 val winner = voteWinner()!!
                 channel.createMessage {
-                    content = bot.getCabinetMemberRole().mention
+                    messageReference = message.id
+                    content = bot.getCabinetRole().mention
                     embed {
                         title = "${id.value} - $question"
-                        description = if (winner.inFavor())
-                            "This has passed, with ${positivesVotes.voters.size - negativeVotes.voters.size} more in favor than against, and ${abstainedVotes.voters.size} abstaining."
-                        else
-                            "This **has not** passed, with ${negativeVotes.voters.size - positivesVotes.voters.size} more against than in favor, and ${abstainedVotes.voters.size} abstaining."
+                        description = winnerString(winner, message)
                     }
                 }
-                message.delete()
-                false
-            } catch (e: VoteTiedException) {
+            } catch (_: VoteTiedException) {
                 channel.createMessage {
+                    messageReference = message.id
                     content = bot.getCurrentPresident().mention
                     embed {
                         title = "An ultra-rare tie has appeared!"
-                        description = e.message!!.format(message.getJumpUrl())
+                        description = "There is a tie. Please decide if you'd like to make ${embedMessageUrl("this question", message)} pass, or to leave it as a deadlock, thus effectively vetoing the question, via /$TiebreakerCommandName"
                     }
                 }
-                false
             }
-        } else {
-            if (message == null)
-                false
-            else {
-                message.edit {
-                    embed { fromQuestion(this@Question) }
-                }
-                true
-            }
+        }
+        message.edit {
+            embed { fromQuestion(this@Question) }
         }
     }
 }
 
-class VoteTiedException : Exception("There is a tie. Please independently decide if you'd like to make [this question](%s) pass, or to leave it as a deadlock and thus veto it, via /cabinet-question-override")
-
-@Serializable
-data class VoteData(
-        val voters: Collection<Snowflake> = listOf()
-) {
-    fun copyEditVoters(accumulator: AccumulatorFunc<Snowflake>) =
-            copy(voters = voters accumulate accumulator)
-}
+class VoteTiedException : Exception()
 
 enum class VoteType {
     Yes, No, None;
@@ -237,10 +234,12 @@ enum class VoteType {
         None -> "Abstain"
     }
 
-    fun phrase() = when (this) {
-        Yes -> "in favor"
-        No -> "against"
-        None -> "to abstain"
+    val phrase by invoking {
+        when (this) {
+            Yes -> "in favor"
+            No -> "against"
+            None -> "to abstain"
+        }
     }
 
     companion object {

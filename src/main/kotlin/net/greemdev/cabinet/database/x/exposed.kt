@@ -19,17 +19,15 @@ fun <ID : Comparable<ID>, T : Entity<ID>> EntityClass<ID, T>.findOptional(id: ID
 fun <T : Entity<ULong>> EntityClass<ULong, T>.findBySnowflake(id: Snowflake?) = findOptional(id?.value)
 
 /**
- * A property delegate for a Kotlin object whose value is represented in the Exposed [column] as a [S] (source) value;
+ * A property delegate for a Kotlin object whose value is represented in the Exposed column [this] as a [S] (source) value;
  * specifying functions for parsing the data into a value of [R] and serializing the result [R] back into its original value [S].
  * The most common usage of this is when S is [String] for parsing; allowing usage such as compound JSON objects as column values.
  * The getter parses the underlying data, and the setter sets the underlying data to its newer counterpart, all data passed through the specified functions.
- * @param column The data column whose value should be treated as parsable data.
  * @exception IllegalStateException thrown when the property builder does not have one or both of the value converters.
  */
-fun <ID : Comparable<ID>, S, R> serialized(
-        column: Column<S>,
+infix fun <ID : Comparable<ID>, S, R> Column<S>.serialized(
         initializer: DataPropertyBuilder<ID, S, R>.() -> Unit
-) = DataPropertyBuilder.forColumn<ID, S, R>(column).apply(initializer).build()
+) = DataPropertyBuilder.forColumn<ID, S, R>(this).apply(initializer).build()
 
 /**
  * A property delegate for a kotlinx [Instant] whose value is represented in the Exposed [column] as a [Long] value.
@@ -45,13 +43,11 @@ fun <ID : Comparable<ID>> serializedSnowflake(column: Column<ULong>) = ParsedDat
  * A property delegate for a Kotlin object whose value is represented in the Exposed [column] as a compound JSON string value.
  * The getter parses the underlying data, and the setter sets the underlying data to its newer counterpart, as JSON.
  * @param column The varchar column whose value should be treated as a JSON string
- * @param pretty Whether the JSON is serialized with indentation or not. Default false as it's the best for storing data (less wasted space to hold the same data).
  */
 @Suppress("UnusedReceiverParameter") //It's used, it's how we resolve ID without needing to pass every type param at the use site; plus, only Exposed entities can have columns anyway.
 inline fun <ID : Comparable<ID>, reified R> Entity<ID>.serializedJson(
-        column: Column<String>,
-        pretty: Boolean = false
-) = ParsedDataBackedProperty.json<ID, R>(column, pretty)
+        column: Column<String>
+) = ParsedDataBackedProperty.json<ID, R>(column)
 
 
 /**
@@ -75,7 +71,7 @@ object BotDatabase {
      * Connects to the database and runs the provided [block] transaction afterwards.
      */
     // "connects" by accessing BotDatabase.INSTANCE (the internal reference to the singleton kotlin object BotDatabase) when compiled, which calls the above init block.
-    infix fun <T> start(block: suspend Transaction.() -> T) = runBlocking { newSuspendedTransaction { block() } }
+    infix operator fun <T> invoke(block: suspend Transaction.() -> T) = runBlocking { newSuspendedTransaction { block() } }
 }
 
 fun <ID : Comparable<ID>, T : Entity<ID>> EntityClass<ID, T>.listAll(): List<T> = all().toList()

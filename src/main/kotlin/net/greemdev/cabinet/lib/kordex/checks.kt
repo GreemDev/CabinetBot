@@ -21,7 +21,11 @@ class Fail private constructor(message: String?, cause: Throwable? = null) : Thr
     }
 }
 
+@Suppress("FunctionName")
+fun<T : Event> CheckScope(ctx: CheckContextWithCache<T>) = object : CheckCreateScope<T>(ctx) {}
+
 abstract class CheckCreateScope<T : Event>(val context: CheckContextWithCache<T>) {
+
     val event by context::event
     val cache by context::cache
 
@@ -60,11 +64,10 @@ fun <A : Arguments> ChatCommand<A>.createCheck(block: suspend CheckCreateScope<M
 }
 
 suspend fun <T : Event> CheckContextWithCache<T>.createCheck(block: suspend CheckCreateScope<T>.() -> Unit) {
-    val scope = object : CheckCreateScope<T>(this) {}
     try {
-        scope.block()
+        CheckScope(this).block()
+        pass()
     } catch (f: Fail) {
         fail(f.message)
     }
-    pass()
 }

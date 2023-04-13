@@ -44,9 +44,11 @@ suspend infix fun <T> Deferred<T>.then(block: suspend (T) -> T): T = block(await
 suspend infix fun <T, R> Deferred<T>.thenRun(block: suspend (T) -> R): R = block(await())
 
 inline fun CoroutineScope.buildJob(crossinline block: AsyncJobBuilder.() -> Unit) =
-    taking(object : AsyncJobBuilder(this) {}, block)
+    taking(asyncJobBuilder(this), block)
 
 inline fun CoroutineScope.wrapJob(job: Job, crossinline block: AsyncJobBuilder.() -> Unit) = buildJob(block) executing job
+
+fun asyncJobBuilder(scope: CoroutineScope) = object : AsyncJobBuilder(scope) {}
 
 abstract class AsyncJobBuilder(private val scope: CoroutineScope) {
     private var onSuccess: () -> Unit = {}

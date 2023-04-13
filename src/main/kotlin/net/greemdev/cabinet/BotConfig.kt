@@ -7,12 +7,12 @@ import dev.kord.common.entity.optional.Optional
 import net.greemdev.cabinet.lib.util.*
 import java.io.File
 import kotlinx.serialization.*
-import kotlinx.serialization.json.Json
 import net.greemdev.cabinet.lib.util.parse.ColorParser
 import kotlin.IllegalArgumentException
 import kotlin.jvm.Throws
 import kotlin.system.exitProcess
 
+private val clogger by slf4j("Config")
 val botConfig by invoking { BotConfig.get().orNull() ?: error("no config available") }
 
 private const val fileloc = "data/config.json"
@@ -21,7 +21,10 @@ private const val fileloc = "data/config.json"
 data class BotConfig(
     val locked: Boolean,
     val token: String,
+    val guild: Snowflake,
     val cabinetChannel: Snowflake,
+    val cabinetRole: Snowflake,
+    val presidentRole: Snowflake,
     val game: String,
     val ownerId: String,
     val embedColor: String,
@@ -32,7 +35,10 @@ data class BotConfig(
         operator fun invoke() = BotConfig(
             defaultLockedValue,
             defaultTokenValue,
+            defaultGuildValue.snowflake,
             defaultCabinetChannelValue.snowflake,
+            defaultCabinetRoleValue.snowflake,
+            defaultPresidentRoleValue.snowflake,
             defaultGameValue,
             defaultOwnerIdValue,
             defaultEmbedColorValue,
@@ -44,13 +50,11 @@ data class BotConfig(
                 file().createNewFile()
         }
 
-        private val logger by slf4j("Config")
-
         fun checks() {
             val f = file()
             if (!f.exists()) {
                 write()
-                logger.warn("Please fill in the config.json config file in the data folder, and restart me!")
+                clogger.warn("Please fill in the config.json config file in the data folder, and restart me!")
                 exitProcess(-1)
             }
 
@@ -62,8 +66,10 @@ data class BotConfig(
 
         fun file() = File(fileloc).also {
             if (it.exists()) {
-                it.setReadable(true)
-                it.setWritable(true)
+                if (!it.isReadable)
+                    it.isReadable = true
+                if (!it.isWritable)
+                    it.isWritable = true
             }
         }
 
@@ -71,18 +77,20 @@ data class BotConfig(
             file().writeText(formatJsonString(config, pretty = true))
         }
 
-        fun get(): java.util.Optional<BotConfig> =
-            optionalOf(try {
-                Json.decodeFromString<BotConfig>(file().readText())
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            }).also { opt ->
+        fun get() =
+            runCatching {
+                try {
+                    parseJsonString<BotConfig>(file().readText(), true)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    throw e
+                }
+            }.opt().also { opt ->
                 opt.ifPresent {
                     val cpr = ColorParser.tryParse(it.embedColor)
                     cpr.exceptionOrNull()?.let { t ->
-                        logger.error("Invalid color defined", t)
-                        logger.warn("Please fix the above issue and restart.")
+                        clogger.error("Invalid color defined", t)
+                        clogger.warn("Please fix the above issue and restart.")
                         exitProcess(-1)
                     }
                 }
@@ -120,7 +128,10 @@ data class BotConfig(
 
 private const val defaultLockedValue = true
 private const val defaultTokenValue = "your-token-here"
-private const val defaultCabinetChannelValue = 858791066147618857u
+private const val defaultGuildValue = 858547359804555264
+private const val defaultCabinetChannelValue = 858791066147618857
+private const val defaultCabinetRoleValue = 900431261015879721
+private const val defaultPresidentRoleValue = 858548175711240192
 private const val defaultGameValue = "your-game-here"
 private const val defaultOwnerIdValue = "your-id-here"
 private const val defaultEmbedColorValue = "#7000FB"

@@ -3,7 +3,7 @@ package net.greemdev.cabinet.lib.nixargs
 import joptsimple.*
 import java.util.*
 
-fun buildOptionParser(shortSpec: String? = null, func: OptionParserBuilder.() -> Unit) =
+fun optionParser(shortSpec: String? = null, func: OptionParserBuilder.() -> Unit) =
         OptionParserBuilder(
                 shortSpec?.let {
                     OptionParser(shortSpec)

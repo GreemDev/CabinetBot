@@ -3,7 +3,9 @@ package net.greemdev.cabinet.lib.util
 inline fun<T> taking(value: T, block: T.() -> Unit): T = value.apply(block)
 
 inline fun<T> modifying(value: T, crossinline block: T.() -> Unit) = object : PropertyValue<T> {
-    val resulting: T = taking(value, block)
+
+    val resulting = taking(value, block)
+
     override fun get(thisRef: Any?): T = resulting
 }
 

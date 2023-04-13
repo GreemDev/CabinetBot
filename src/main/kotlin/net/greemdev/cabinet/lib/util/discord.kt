@@ -100,7 +100,7 @@ val User.effectiveAvatar
     get() = avatar ?: defaultAvatar
 
 val Member.isCabinetMember: Boolean
-    get() = roleIds.contains(CabinetBot.cabinetMemberRoleId.snowflake)
+    get() = botConfig.cabinetRole in roleIds
 
 suspend fun UserBehavior.createMessageOrNull(content: String) = getDmChannelOrNull()?.createMessage(content)
 suspend fun UserBehavior.createMessageOrNull(builder: suspend UserMessageCreateBuilder.() -> Unit) = getDmChannelOrNull()?.createMessage { builder() }

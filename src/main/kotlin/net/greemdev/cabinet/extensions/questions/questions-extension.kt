@@ -7,6 +7,7 @@ import net.greemdev.cabinet.database.entities.Question
 import net.greemdev.cabinet.lib.kordex.CabinetExtension
 import net.greemdev.cabinet.extensions.arg.*
 import net.greemdev.cabinet.extensions.modal.*
+import net.greemdev.cabinet.lib.kordex.cacheNonnull
 import net.greemdev.cabinet.lib.kordex.cacheNonnullThenGet
 import net.greemdev.cabinet.lib.kordex.createCheck
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -15,6 +16,7 @@ const val CabinetCommandName = "cabinet"
 const val VoteSubcommandName = "vote"
 const val StartQuestionSubcommandName = "start-question"
 const val TiebreakerSubcommandName = "tiebreaker"
+
 const val VoteCommandName = "$CabinetCommandName $VoteSubcommandName"
 const val StartQuestionCommandName = "$CabinetCommandName $StartQuestionSubcommandName"
 const val TiebreakerCommandName = "$CabinetCommandName $TiebreakerSubcommandName"
@@ -23,6 +25,7 @@ class QuestionsExtension : CabinetExtension("questions") {
     override suspend fun setup() {
         ephemeralSlashCommand {
             name = CabinetCommandName
+            description = "Base command for cabinet questions"
 
             ephemeralSubCommand(::StartQuestionForm) {
                 name = StartQuestionSubcommandName
@@ -41,8 +44,7 @@ class QuestionsExtension : CabinetExtension("questions") {
                 name = VoteSubcommandName
                 description = "Vote for a specific question."
                 createCheck {
-                    if (botConfig.locked)
-                        fail("Bot is locked.")
+                    failIf(botConfig.locked, "Bot is locked.")
                     val question = cacheNonnullThenGet("question", "Couldn't find a question with that ID.") {
                         transaction {
                             Question.findById(it.interaction.command.integers["vote-id"]!!)
@@ -50,8 +52,24 @@ class QuestionsExtension : CabinetExtension("questions") {
                     }
                     failIf(question.isImmutable, "That vote is no longer modifiable.")
                 }
-
                 action(vote)
+            }
+
+            ephemeralSubCommand(::QuestionTiebreaker) {
+                name = TiebreakerSubcommandName
+                description = "President only. Allows the forcing through of a vote that has been tied in the Cabinet."
+                createCheck {
+                    failIf(botConfig.locked, "Bot is locked.")
+
+                    val question = cacheNonnullThenGet("question", "Couldn't find a question with that ID.") {
+                        transaction {
+                            Question.findById(it.interaction.command.integers["vote-id"]!!)
+                        }
+                    }
+                    failIf(!question.isImmutable, "That vote is currently active.")
+                    failIf(question.positivesVotes.size != question.negativeVotes.size, "That question isn't tied.")
+                }
+                action(tiebreaker)
             }
         }
     }
